@@ -75,7 +75,7 @@ module AppParser
                 wait(credit_i == 1'b1); /* Inject task mapping  */
                 @posedge(clk_i);
 
-                $fscanf(app_start_fd, "%u", data_o);
+                data_o = FLIT_SIZE'(1);
                 wait(credit_i == 1'b1); /* Inject task type tag */
                 @posedge(clk_i);
             end
