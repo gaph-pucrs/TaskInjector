@@ -85,8 +85,20 @@ module TaskInjector
             task_cnt <= '0;
         else begin
             case (inject_state)
-                INJECTOR_IDLE: task_cnt <= src_data_i[8:0];
-                INJECTOR_MAP:  task_cnt <= in_payload[0][8:0];
+                INJECTOR_RECEIVE_TASK_CNT: task_cnt <= src_data_i[8:0];
+                INJECTOR_MAP:              task_cnt <= in_payload[0][8:0];
+                default: ;
+            endcase
+        end
+    end
+
+    logic [16:0] graph_size;
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni)
+            graph_size <= '0;
+        else begin
+            case (inject_state)
+                INJECTOR_IDLE:  graph_size <= src_data_i[16:0]
                 default: ;
             endcase
         end
@@ -109,6 +121,10 @@ module TaskInjector
     always_comb begin
         case (inject_state)
             INJECTOR_IDLE:
+                inject_next_state = src_rx_i 
+                    ? INJECTOR_RECEIVE_TASK_CNT 
+                    : INJECTOR_IDLE;
+            INJECTOR_RECEIVE_TASK_CNT:
                 inject_next_state = src_rx_i 
                     ? INJECTOR_SEND_DESCRIPTOR 
                     : INJECTOR_IDLE;
@@ -177,6 +193,7 @@ module TaskInjector
         else begin
             src_credit_o = (
                 inject_state inside {
+                    INJECTOR_IDLE,
                     INJECTOR_RECEIVE_TXT_SZ, 
                     INJECTOR_RECEIVE_DATA_SZ, 
                     INJECTOR_RECEIVE_BSS_SZ, 
@@ -252,13 +269,22 @@ module TaskInjector
                                 out_header    <= '0;
                                 out_header[0] <= in_header[8];                   /* Target address */
                                 out_header[1] <= (
-                                    {22'b0 , task_cnt, 1'b0} + (HEADER_SIZE + 1) /* Payload size   */
+                                    {22'b0 , task_cnt, 1'b0} 
+                                    + {15'b0, graph_size}                        /* Payload size   */
+                                    + (HEADER_SIZE + 1) 
                                 );
                                 out_header[2] <= MESSAGE_DELIVERY;               /* Service        */
                                 out_header[3] <= in_header[3];                   /* Producer task  */
                                 out_header[4] <= in_header[4];                   /* Consumer task  */
                                 out_header[8] <= (
-                                    {({20'b0 , task_cnt, 1'b0} + 29'd3), 2'b0}   /* Message length */
+                                    {
+                                        (
+                                            {20'b0 , task_cnt, 1'b0} 
+                                            + {12'b0, graph_size}                /* Message length */
+                                            + 29'd3
+                                        ), 
+                                        2'b0
+                                    }
                                 );
                             end
                             default: ;
