@@ -22,6 +22,7 @@ module AppParser
     assign ms_cnt = 32'(tick_cnt_i / 64'(MS_DIV));
 
     string app_name;
+    string task_name;
 
     int app_start_fd;
     int app_descr_fd;
@@ -101,7 +102,6 @@ module AppParser
         // Task injection
         ////////////////////////////////////////////////////////////////////////
             for (int t = 0; t < app_task_cnt; t++) begin
-                string task_name;
                 $fgets(task_name, app_descr_fd);
 
                 task_descr_fd = $fopen({PATH, "/applications/", app_name, "/", task_name, ".txt"}, "r");
