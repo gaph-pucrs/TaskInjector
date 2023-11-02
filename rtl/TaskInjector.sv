@@ -28,17 +28,18 @@ module TaskInjector
 
     localparam MAX_AUX_HEADER_SIZE = 2;
 
-    typedef enum logic [9:0] {
-        INJECTOR_IDLE            = 10'b0000000001,
-        INJECTOR_SEND_DESCRIPTOR = 10'b0000000010,
-        INJECTOR_MAP             = 10'b0000000100,
-        INJECTOR_RECEIVE_TXT_SZ  = 10'b0000001000,
-        INJECTOR_RECEIVE_DATA_SZ = 10'b0000010000,
-        INJECTOR_RECEIVE_BSS_SZ  = 10'b0000100000,
-        INJECTOR_RECEIVE_ENTRY   = 10'b0001000000,
-        INJECTOR_SEND_TASK       = 10'b0010000000,
-        INJECTOR_NEXT_TASK       = 10'b0100000000,
-        INJECTOR_WAIT_COMPLETE   = 10'b1000000000
+    typedef enum logic [10:0] {
+        INJECTOR_IDLE             = 11'b00000000001,
+        INJECTOR_RECEIVE_TASK_CNT = 11'b00000000010,
+        INJECTOR_SEND_DESCRIPTOR  = 11'b00000000100,
+        INJECTOR_MAP              = 11'b00000001000,
+        INJECTOR_RECEIVE_TXT_SZ   = 11'b00000010000,
+        INJECTOR_RECEIVE_DATA_SZ  = 11'b00000100000,
+        INJECTOR_RECEIVE_BSS_SZ   = 11'b00001000000,
+        INJECTOR_RECEIVE_ENTRY    = 11'b00010000000,
+        INJECTOR_SEND_TASK        = 11'b00100000000,
+        INJECTOR_NEXT_TASK        = 11'b01000000000,
+        INJECTOR_WAIT_COMPLETE    = 11'b10000000000
     } inject_fsm_t;
     inject_fsm_t inject_state;
 
@@ -72,7 +73,9 @@ module TaskInjector
     } receive_fsm_t;
     receive_fsm_t receive_state;
 
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [(HEADER_SIZE - 1):0]     [(FLIT_SIZE - 1):0] in_header;
+    /* verilator lint_on UNUSEDSIGNAL */
     logic [(MAX_PAYLOAD_SIZE - 1):0][(FLIT_SIZE - 1):0] in_payload;
     
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,7 +101,7 @@ module TaskInjector
             graph_size <= '0;
         else begin
             case (inject_state)
-                INJECTOR_IDLE:  graph_size <= src_data_i[16:0]
+                INJECTOR_IDLE:  graph_size <= src_data_i[16:0];
                 default: ;
             endcase
         end
