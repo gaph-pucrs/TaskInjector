@@ -381,7 +381,7 @@ module TaskInjector
             RECEIVE_IDLE: begin
                 if (send_state == SEND_WAIT_REQUEST)
                     receive_next_state = RECEIVE_HEADER;
-                else if (inject_state == INJECTOR_MAP)
+                else if (inject_state inside {INJECTOR_MAP, INJECTOR_WAIT_COMPLETE})
                     receive_next_state = RECEIVE_HEADER;
                 else
                     receive_next_state = RECEIVE_IDLE;
