@@ -122,13 +122,13 @@ module TaskInjector
         end
         else begin
             if (receive_state == RECEIVE_WAIT_REQ) begin
-                out_header    <= '0;       /* @todo change to in_header fields */
-                out_header[0] <= MAPPER_ADDRESS;     /* Target address */
-                out_header[1] <= HEADER_SIZE - 2'd2; /* Payload size   */
-                out_header[2] <= MESSAGE_REQUEST;    /* Service        */
-                out_header[3] <= '0;                 /* Producer task  */
-                out_header[4] <= INJECTOR_ADDRESSS;  /* Consumer task  */
-                out_header[8] <= INJECTOR_ADDRESSS;  /* Source address */
+                out_header    <= '0;
+                out_header[0] <= in_header[8];       /* Target address   */
+                out_header[1] <= HEADER_SIZE - 2'd2; /* Payload size     */
+                out_header[2] <= MESSAGE_REQUEST;    /* Service          */
+                out_header[3] <= in_header[3];       /* Producer task    */
+                out_header[4] <= in_header[4];       /* Consumer task    */
+                out_header[8] <= INJECTOR_ADDRESSS;  /* Consumer address */
             end
             else begin
                 case (inject_state)
@@ -137,21 +137,21 @@ module TaskInjector
                             SEND_IDLE: begin
                                 /* DATA_AV for App descriptor */
                                 out_header    <= '0;
-                                out_header[0] <= MAPPER_ADDRESS;     /* Target address */
-                                out_header[1] <= HEADER_SIZE - 2'd2; /* Payload size   */
-                                out_header[2] <= DATA_AV;            /* Service        */
-                                out_header[3] <= INJECTOR_ADDRESSS;  /* Producer task  */
-                                out_header[4] <= '0;                 /* Consumer task  */
-                                out_header[8] <= INJECTOR_ADDRESSS;  /* Source address */
+                                out_header[0] <= MAPPER_ADDRESS;     /* Target address   */
+                                out_header[1] <= HEADER_SIZE - 2'd2; /* Payload size     */
+                                out_header[2] <= DATA_AV;            /* Service          */
+                                out_header[3] <= INJECTOR_ADDRESSS;  /* Producer task    */
+                                out_header[4] <= '0;                 /* Consumer task    */
+                                out_header[8] <= INJECTOR_ADDRESSS;  /* Producer address */
                             end
                             SEND_WAIT_REQUEST: begin
                                 /* DELIVERY for App descriptor */
                                 out_header    <= '0;   /* @todo change to in_header fields */
-                                out_header[0] <= MAPPER_ADDRESS;                        /* Target address */
+                                out_header[0] <= in_header[8];                          /* Target address */
                                 out_header[1] <= {task_cnt, 1'b0} + HEADER_SIZE + 1'b1; /* Payload size   */
                                 out_header[2] <= MESSAGE_DELIVERY;                      /* Service        */
-                                out_header[3] <= INJECTOR_ADDRESSS;                     /* Producer task  */
-                                out_header[4] <= '0;                                    /* Consumer task  */
+                                out_header[3] <= in_header[3];                          /* Producer task  */
+                                out_header[4] <= in_header[4];                          /* Consumer task  */
                                 out_header[8] <= {({task_cnt, 1'b0} + 2'd3), 2'b0};     /* Message length */
                             end
                             default: ;
