@@ -3,7 +3,8 @@ module TaskInjector
 #(
     parameter FLIT_SIZE        = 32,
     parameter MAPPER_ADDRESS   = 0,
-    parameter MAX_PAYLOAD_SIZE = 32
+    parameter MAX_PAYLOAD_SIZE = 32,
+    parameter INJECT_MAPPER    = 0
 )
 (
     input  logic                     clk_i,
@@ -53,12 +54,17 @@ module TaskInjector
 // Injector
 ////////////////////////////////////////////////////////////////////////////////
 
-    logic [7:0] task_cnt;
+    logic [8:0] task_cnt;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni)
             task_cnt <= '0;
-        else if (inject_state == INJECTOR_IDLE)
-            task_cnt <= src_data_i; /* @todo add update on MAP */
+        else begin
+            case (inject_state)
+                INJECTOR_IDLE: task_cnt <= src_data_i;
+                INJECTOR_MAP:  task_cnt <= in_payload[0];
+                default: ;
+            endcase
+        end
     end
 
     logic [7:0] current_task;
@@ -66,32 +72,33 @@ module TaskInjector
         if (!rst_ni)
             current_task <= '0;
         else begin
-            if (inject_state == INJECTOR_MAP)
-                current_task <= '0;
-            else if (inject_state == INJECTOR_NEXT_TASK)
-                current_task <= current_task + 1'b1;
+            case (inject_state)
+                INJECTOR_MAP:       current_task <= INJECT_MAPPER;
+                INJECTOR_NEXT_TASK: current_task <= current_task + 1'b1;
+                default: ;
+            endcase
         end
     end
 
     inject_fsm_t inject_next_state;
     always_comb begin
         case (inject_state)
-            INJECTOR_IDLE:             inject_next_state = src_rx_i                                ? INJECTOR_SEND_DESCRIPTOR : INJECTOR_IDLE;
-            INJECTOR_SEND_DESCRIPTOR:  inject_next_state = (send_state == SEND_FINISHED)           ? INJECTOR_MAP             : INJECTOR_SEND_DESCRIPTOR;
-            INJECTOR_MAP:              inject_next_state = (receive_state == RECEIVE_WAIT_ALLOC)   ? INJECTOR_RECEIVE_TXT_SZ  : INJECTOR_MAP;
-            INJECTOR_RECEIVE_TXT_SZ:   inject_next_state = src_rx_i                                ? INJECTOR_RECEIVE_DATA_SZ : INJECTOR_RECEIVE_TXT_SZ;
-            INJECTOR_RECEIVE_DATA_SZ:  inject_next_state = src_rx_i                                ? INJECTOR_RECEIVE_BSS_SZ  : INJECTOR_RECEIVE_DATA_SZ;
-            INJECTOR_RECEIVE_BSS_SZ:   inject_next_state = src_rx_i                                ? INJECTOR_RECEIVE_ENTRY   : INJECTOR_RECEIVE_BSS_SZ;
-            INJECTOR_RECEIVE_ENTRY:    inject_next_state = src_rx_i                                ? INJECTOR_SEND_TASK       : INJECTOR_RECEIVE_ENTRY;
-            INJECTOR_SEND_TASK:        inject_next_state = (send_state == SEND_FINISHED)           ? INJECTOR_NEXT_TASK       : INJECTOR_SEND_TASK;
-            INJECTOR_NEXT_TASK:        inject_next_state = (current_task == task_cnt - 1'b1)       ? INJECTOR_WAIT_COMPLETE   : INJECTOR_RECEIVE_TXT_SZ;
-            INJECTOR_WAIT_COMPLETE:    inject_next_state = (receive_state == RECEIVE_MAP_COMPLETE) ? INJECTOR_IDLE            : INJECTOR_WAIT_COMPLETE;
+            INJECTOR_IDLE:             inject_next_state = src_rx_i                                ? INJECTOR_SEND_DESCRIPTOR                                                 : INJECTOR_IDLE;
+            INJECTOR_SEND_DESCRIPTOR:  inject_next_state = (send_state == SEND_FINISHED)           ? INJECTOR_MAP                                                             : INJECTOR_SEND_DESCRIPTOR;
+            INJECTOR_MAP:              inject_next_state = (receive_state == RECEIVE_WAIT_ALLOC)   ? INJECTOR_RECEIVE_TXT_SZ                                                  : INJECTOR_MAP;
+            INJECTOR_RECEIVE_TXT_SZ:   inject_next_state = src_rx_i                                ? INJECTOR_RECEIVE_DATA_SZ                                                 : INJECTOR_RECEIVE_TXT_SZ;
+            INJECTOR_RECEIVE_DATA_SZ:  inject_next_state = src_rx_i                                ? INJECTOR_RECEIVE_BSS_SZ                                                  : INJECTOR_RECEIVE_DATA_SZ;
+            INJECTOR_RECEIVE_BSS_SZ:   inject_next_state = src_rx_i                                ? INJECTOR_RECEIVE_ENTRY                                                   : INJECTOR_RECEIVE_BSS_SZ;
+            INJECTOR_RECEIVE_ENTRY:    inject_next_state = src_rx_i                                ? INJECTOR_SEND_TASK                                                       : INJECTOR_RECEIVE_ENTRY;
+            INJECTOR_SEND_TASK:        inject_next_state = (send_state == SEND_FINISHED)           ? ((INJECT_MAPPER && task_cnt == '0) ? INJECTOR_IDLE : INJECTOR_NEXT_TASK) : INJECTOR_SEND_TASK;
+            INJECTOR_NEXT_TASK:        inject_next_state = (current_task == task_cnt - 1'b1)       ? INJECTOR_WAIT_COMPLETE                                                   : INJECTOR_RECEIVE_TXT_SZ;
+            INJECTOR_WAIT_COMPLETE:    inject_next_state = (receive_state == RECEIVE_MAP_COMPLETE) ? INJECTOR_IDLE                                                            : INJECTOR_WAIT_COMPLETE;
         endcase
     end
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni)
-            inject_state <= INJECTOR_IDLE;
+            inject_state <= INJECT_MAPPER ? INJECTOR_RECEIVE_TXT_SZ : INJECTOR_IDLE;
         else
             inject_state <= inject_next_state;
     end
@@ -159,13 +166,13 @@ module TaskInjector
                     end
                     INJECTOR_RECEIVE_TXT_SZ: begin
                         out_header     <= '0;
-                        out_header[0]  <= in_payload[current_task + 2'd2];    /* Target address */
-                        out_header[1]  <= src_data_i;                         /* Payload size   */
-                        out_header[2]  <= TASK_ALLOCATION;                    /* Service        */
-                        out_header[3]  <= {in_payload[1][7:0], current_task}; /* Task ID        */
-                        out_header[4]  <= MAPPER_ADDRESS;                     /* Mapper address */
-                        out_header[8]  <= '0;                                 /* Mapper ID      */
-                        out_header[10] <= src_data_i;                         /* Text size      */
+                        out_header[0]  <= (INJECT_MAPPER && task_cnt == '0) ? MAPPER_ADDRESS : in_payload[current_task + 2'd2];    /* Target address */
+                        out_header[1]  <= src_data_i;                                                                              /* Payload size   */
+                        out_header[2]  <= TASK_ALLOCATION;                                                                         /* Service        */
+                        out_header[3]  <= (INJECT_MAPPER && task_cnt == '0) ? '0             : {in_payload[1][7:0], current_task}; /* Task ID        */
+                        out_header[4]  <= (INJECT_MAPPER && task_cnt == '0) ? '1             : MAPPER_ADDRESS;                     /* Mapper address */
+                        out_header[8]  <= (INJECT_MAPPER && task_cnt == '0) ? '1             : '0;                                 /* Mapper ID      */
+                        out_header[10] <= src_data_i;                                                                              /* Text size      */
                     end
                     INJECTOR_RECEIVE_DATA_SZ: begin
                         out_header[9] <= src_data_i; /* Data size */
