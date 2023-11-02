@@ -8,7 +8,7 @@ module AppParser
     input  logic                     clk_i,
     input  logic                     rst_ni,
 
-    input  logic                     tick_cnt_i,
+    input  logic [63:0]              tick_cnt_i,
 
     output logic                     eoa_o,
     output logic                     tx_o,
@@ -18,8 +18,19 @@ module AppParser
 
     parameter MS_DIV = SIM_FREQ / 1_000;
     
-    unsigned ms_cnt;
-    assign ms_cnt = tick_cnt_i / MS_DIV;
+    int unsigned ms_cnt;
+    assign ms_cnt = 32'(tick_cnt_i / 64'(MS_DIV));
+
+    string app_name;
+
+    int app_start_fd;
+    int app_descr_fd;
+    int task_descr_fd;
+
+    int unsigned start_time;
+    int unsigned descr_size;
+    int unsigned app_task_cnt;
+    int unsigned binary_size;
 
     initial begin
 
@@ -27,7 +38,7 @@ module AppParser
     // Reset control
     ////////////////////////////////////////////////////////////////////////////
 
-        eoa_o <= 1'b0;
+        eoa_o  = 1'b0;
         tx_o   = 1'b0;
         data_o = '0;
         @(posedge rst_ni);
@@ -36,18 +47,16 @@ module AppParser
     // Application start control
     ////////////////////////////////////////////////////////////////////////////
 
-        int app_start_fd = $fopen({PATH, "/app_start.txt"}, "r");
+        app_start_fd = $fopen({PATH, "/app_start.txt"}, "r");
 
         if (app_start_fd == '0) begin
             $display("[TaskParser] Could not open app_start.txt");
             $finish();
         end
 
-        while (!feof(app_start_fd)) begin
-            string app_name;
+        while (!$feof(app_start_fd)) begin
             $fgets(app_name, app_start_fd);
 
-            unsigned start_time;
             $fscanf(app_start_fd, "%u", start_time);
 
             wait(ms_cnt >= start_time);
@@ -57,35 +66,35 @@ module AppParser
         ////////////////////////////////////////////////////////////////////////
 
             $fscanf(app_start_fd, "%u", data_o);
-            unsigned descr_size = data_o;
+            descr_size = data_o;
 
             tx_o = 1'b1;
 
             wait(credit_i == 1'b1); /* Inform injector of descriptor size */
-            @posedge(clk_i);
+            @(posedge clk_i);
 
             $fscanf(app_start_fd, "%u", data_o);
-            unsigned app_task_cnt = data_o;
+            app_task_cnt = data_o;
 
             wait(credit_i == 1'b1); /* Inform injector (and inject) app task count */
-            @posedge(clk_i);
+            @(posedge clk_i);
 
             for (int t = 0; t < app_task_cnt; t++) begin
                 $fscanf(app_start_fd, "%u", data_o);
                 wait(credit_i == 1'b1); /* Inject task mapping  */
-                @posedge(clk_i);
+                @(posedge clk_i);
 
                 data_o = FLIT_SIZE'(1);
                 wait(credit_i == 1'b1); /* Inject task type tag */
-                @posedge(clk_i);
+                @(posedge clk_i);
             end
 
-            int app_descr_fd = $fopen({PATH, "/applications/", app_name, ".txt"}, "r");
+            app_descr_fd = $fopen({PATH, "/applications/", app_name, ".txt"}, "r");
 
             for (int g = 0; g < descr_size; g++) begin
                 $fscanf(app_descr_fd, "%u", data_o);
                 wait(credit_i == 1'b1); /* Inject graph descriptor  */
-                @posedge(clk_i);
+                @(posedge clk_i);
             end
 
         ////////////////////////////////////////////////////////////////////////
@@ -95,33 +104,33 @@ module AppParser
                 string task_name;
                 $fgets(task_name, app_descr_fd);
 
-                int task_descr_fd = $fopen({PATH, "/applications/", app_name, "/", task_name, ".txt"}, "r");
+                task_descr_fd = $fopen({PATH, "/applications/", app_name, "/", task_name, ".txt"}, "r");
 
                 $fscanf(task_descr_fd, "%u", data_o);
-                unsigned binary_size = data_o;
+                binary_size = data_o;
 
                 wait(credit_i == 1'b1); /* Inject text size  */
-                @posedge(clk_i);
+                @(posedge clk_i);
 
                 $fscanf(task_descr_fd, "%u", data_o);
                 binary_size += data_o;
                 
                 wait(credit_i == 1'b1); /* Inject data size  */
-                @posedge(clk_i);
+                @(posedge clk_i);
 
                 $fscanf(task_descr_fd, "%u", data_o);
                 wait(credit_i == 1'b1); /* Inject BSS size  */
-                @posedge(clk_i);
+                @(posedge clk_i);
 
                 $fscanf(task_descr_fd, "%u", data_o);
                 wait(credit_i == 1'b1); /* Inject entry point */
-                @posedge(clk_i);
+                @(posedge clk_i);
 
                 binary_size /= 4;   /* Convert to 32-bit words */
                 for (int b = 0; b < binary_size; b++) begin
                     $fscanf(task_descr_fd, "%u", data_o);
                     wait(credit_i == 1'b1);
-                    @posedge(clk_i);
+                    @(posedge clk_i);
                 end
 
                 $fclose(task_descr_fd);
