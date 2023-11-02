@@ -1,6 +1,7 @@
 module TaskInjector
     import TaskInjectorPkg::*;
 #(
+    parameter INJECTOR_ADDRESS = 0,
     parameter FLIT_SIZE        = 32,
     parameter MAX_PAYLOAD_SIZE = 32,
     parameter INJECT_MAPPER    = 0
@@ -13,7 +14,6 @@ module TaskInjector
     output logic                     src_credit_o,
     input  logic [(FLIT_SIZE - 1):0] src_data_i,
     input  logic [15:0]              mapper_address_i,
-    input  logic [31:0]              injector_address_i,
 
     /* NoC Output */
     output logic                     noc_tx_o,
@@ -248,7 +248,7 @@ module TaskInjector
                 out_header[2] <= MESSAGE_REQUEST;    /* Service          */
                 out_header[3] <= in_header[3];       /* Producer task    */
                 out_header[4] <= in_header[4];       /* Consumer task    */
-                out_header[8] <= injector_address_i; /* Consumer address */
+                out_header[8] <= INJECTOR_ADDRESS;   /* Consumer address */
             end
             else begin
                 case (inject_state)
@@ -260,9 +260,9 @@ module TaskInjector
                                 out_header[0] <= {16'b0, mapper_address_i}; /* Target address   */
                                 out_header[1] <= HEADER_SIZE - 2;           /* Payload size     */
                                 out_header[2] <= DATA_AV;                   /* Service          */
-                                out_header[3] <= injector_address_i;        /* Producer task    */
+                                out_header[3] <= INJECTOR_ADDRESS;          /* Producer task    */
                                 out_header[4] <= '0;                        /* Consumer task    */
-                                out_header[8] <= injector_address_i;        /* Producer address */
+                                out_header[8] <= INJECTOR_ADDRESS;          /* Producer address */
                             end
                             SEND_WAIT_REQUEST: begin
                                 /* DELIVERY for App descriptor */
@@ -408,7 +408,7 @@ module TaskInjector
                         aux_header_size <= 2'd2;
                         aux_header      <= '0;
                         aux_header[0]   <= NEW_APP;
-                        aux_header[1]   <= injector_address_i;
+                        aux_header[1]   <= INJECTOR_ADDRESS;
                     end
                 end
                 default: aux_header_size <= '0;
