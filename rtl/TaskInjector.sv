@@ -367,15 +367,14 @@ module TaskInjector
             receive_cntr <= '0;
         end
         else begin
-            if (receive_state == RECEIVE_SERVICE)
+            if (receive_state == RECEIVE_SIZE)
                 receive_cntr <= 1'b1;
-            else if (noc_rx_i && (receive_state inside {RECEIVE_REQUEST, RECEIVE_DATA_AV, RECEIVE_DELIVERY}))
+            else if (noc_rx_i && (receive_state inside {RECEIVE_PACKET, RECEIVE_DROP}))
                 receive_cntr <= receive_cntr + 1'b1;
         end
     end
 
     receive_fsm_t receive_next_state;
-
     always_comb begin
         case (receive_state)
             RECEIVE_IDLE: begin
@@ -387,54 +386,36 @@ module TaskInjector
                     receive_next_state = RECEIVE_IDLE;
             end
             RECEIVE_HEADER:    receive_next_state = (noc_rx_i) ? RECEIVE_SIZE    : RECEIVE_HEADER;
-            RECEIVE_SIZE:      receive_next_state = (noc_rx_i) ? RECEIVE_SERVICE : RECEIVE_SIZE;
+            RECEIVE_SIZE:      receive_next_state = (noc_rx_i) ? RECEIVE_PACKET : RECEIVE_SIZE;
+            RECEIVE_PACKET: begin
+                if (noc_rx_i) begin
+                    if (receive_cntr == in_header[1] - 1'b1)
+                        receive_next_state = RECEIVE_SERVICE;
+                    else if (receive_cntr == MAX_PAYLOAD_SIZE + HEADER_SIZE - 2'd3)
+                        receive_next_state = RECEIVE_DROP;
+                    else
+                        receive_next_state = RECEIVE_PACKET;
+                end
+                else begin
+                    receive_next_state = RECEIVE_PACKET;
+                end
+            end
             RECEIVE_SERVICE: begin
-                if (noc_rx_i) begin
-                    case (noc_data_i)
-                        MESSAGE_REQUEST:  receive_next_state = RECEIVE_REQUEST;
-                        DATA_AV:          receive_next_state = RECEIVE_DATA_AV;
-                        MESSAGE_DELIVERY: receive_next_state = RECEIVE_DELIVERY;
-                        default:          receive_next_state = RECEIVE_DROP;
-                    endcase
-                end
-            end
-            RECEIVE_REQUEST: begin
-                if (noc_rx_i) begin
-                    if (receive_cntr == in_header[1] - 1'b1)
-                        receive_next_state = RECEIVE_WAIT_DLVR;
-                    else if (receive_cntr == HEADER_SIZE - 2'd3)
-                        receive_next_state = RECEIVE_DROP;
-                    else
-                        receive_next_state = RECEIVE_REQUEST;
-                end
-            end
-            RECEIVE_DATA_AV: begin
-                if (noc_rx_i) begin
-                    if (receive_cntr == in_header[1] - 1'b1)
-                        receive_next_state = RECEIVE_WAIT_REQ;
-                    else if (receive_cntr == HEADER_SIZE - 2'd3)
-                        receive_next_state = RECEIVE_DROP;
-                    else
-                        receive_next_state = RECEIVE_DATA_AV;
-                end
+                case (noc_data_i)
+                    DATA_AV:          receive_next_state = RECEIVE_WAIT_REQ;
+                    MESSAGE_REQUEST:  receive_next_state = RECEIVE_WAIT_DLVR;
+                    MESSAGE_DELIVERY: receive_next_state = RECEIVE_DELIVERY;
+                    default:          receive_next_state = RECEIVE_IDLE; /* Ignore */
+                endcase
             end
             RECEIVE_DELIVERY: begin
-                if (noc_rx_i) begin
-                    if (receive_cntr == in_header[1] - 1'b1) begin
-                        case (in_payload[0])
-                            APP_ALLOCATION_REQUEST: receive_next_state = RECEIVE_WAIT_ALLOC;
-                            APP_MAPPING_COMPLETE:   receive_next_state = RECEIVE_MAP_COMPLETE;
-                            default:                receive_next_state = RECEIVE_IDLE;    /* Ignore */
-                        endcase
-                    end
-                    else if (receive_cntr == MAX_PAYLOAD_SIZE + HEADER_SIZE - 2'd3) begin
-                        receive_next_state = RECEIVE_DROP;
-                    end
-                    else begin
-                        receive_next_state = RECEIVE_DELIVERY;
-                    end
-                end
+                case (in_payload[0])
+                    APP_ALLOCATION_REQUEST: receive_next_state = RECEIVE_WAIT_ALLOC;
+                    APP_MAPPING_COMPLETE:   receive_next_state = RECEIVE_MAP_COMPLETE;
+                    default:                receive_next_state = RECEIVE_IDLE; /* Ignore */
+                endcase
             end
+            RECEIVE_DROP:         receive_next_state = (receive_cntr == in_header[1] - 1'b1)    ? RECEIVE_IDLE : RECEIVE_DROP;
             RECEIVE_WAIT_REQ:     receive_next_state = (send_state == SEND_FINISHED)            ? RECEIVE_IDLE : RECEIVE_WAIT_REQ;
             RECEIVE_WAIT_DLVR:    receive_next_state = (send_state == SEND_FINISHED)            ? RECEIVE_IDLE : RECEIVE_WAIT_DLVR;
             RECEIVE_WAIT_ALLOC:   receive_next_state = (inject_state == INJECTOR_WAIT_COMPLETE) ? RECEIVE_IDLE : RECEIVE_WAIT_ALLOC;
@@ -449,6 +430,6 @@ module TaskInjector
             receive_state <= receive_next_state;
     end
 
-    assign noc_credit_o = !(receive_state inside {RECEIVE_IDLE, RECEIVE_WAIT_DLVR, RECEIVE_WAIT_REQ});
+    assign noc_credit_o = (receive_state inside {RECEIVE_HEADER, RECEIVE_SIZE, RECEIVE_PACKET, RECEIVE_DROP});
 
 endmodule
