@@ -1,9 +1,12 @@
+`include "TaskInjectorPkg.sv"
+
 module TaskInjector
     import TaskInjectorPkg::*;
 #(
     parameter FLIT_SIZE        = 32,
-    parameter MAPPER_ADDRESS   = 0,
     parameter MAX_PAYLOAD_SIZE = 32,
+    parameter MAPPER_ADDRESS   = 0,
+    parameter INJECTOR_ADDRESS = 0,
     parameter INJECT_MAPPER    = 0
 )
 (
@@ -22,7 +25,7 @@ module TaskInjector
     /* NoC Input */
     input  logic                     noc_rx_i,
     output logic                     noc_credit_o,
-    input  logic [(FLIT_SIZE - 1):0] noc_data_i,
+    input  logic [(FLIT_SIZE - 1):0] noc_data_i
 );
 
     localparam MAX_AUX_HEADER_SIZE = 2;
@@ -56,7 +59,7 @@ module TaskInjector
     logic [($clog2(MAX_AUX_HEADER_SIZE)):0] aux_header_idx;
     logic [($clog2(MAX_AUX_HEADER_SIZE)):0] aux_header_size;
 
-    typedef enum logic [] {
+    typedef enum logic [10:0] {
         RECEIVE_IDLE         = 11'b00000000001,
         RECEIVE_HEADER       = 11'b00000000010,
         RECEIVE_SIZE         = 11'b00000000100,
@@ -142,7 +145,7 @@ module TaskInjector
                         ? INJECTOR_IDLE 
                         : INJECTOR_NEXT_TASK;
             INJECTOR_NEXT_TASK:
-                inject_next_state = (current_task == task_cnt - 1'b1) 
+                inject_next_state = (current_task == 8'(task_cnt - 1'b1)) 
                     ? INJECTOR_WAIT_COMPLETE 
                     : INJECTOR_RECEIVE_TXT_SZ;
             INJECTOR_WAIT_COMPLETE:
@@ -225,12 +228,12 @@ module TaskInjector
         else begin
             if (receive_state == RECEIVE_WAIT_REQ) begin
                 out_header    <= '0;
-                out_header[0] <= in_header[8];       /* Target address   */
-                out_header[1] <= HEADER_SIZE - 2'd2; /* Payload size     */
-                out_header[2] <= MESSAGE_REQUEST;    /* Service          */
-                out_header[3] <= in_header[3];       /* Producer task    */
-                out_header[4] <= in_header[4];       /* Consumer task    */
-                out_header[8] <= INJECTOR_ADDRESSS;  /* Consumer address */
+                out_header[0] <= in_header[8];     /* Target address   */
+                out_header[1] <= HEADER_SIZE - 2;  /* Payload size     */
+                out_header[2] <= MESSAGE_REQUEST;  /* Service          */
+                out_header[3] <= in_header[3];     /* Producer task    */
+                out_header[4] <= in_header[4];     /* Consumer task    */
+                out_header[8] <= INJECTOR_ADDRESS; /* Consumer address */
             end
             else begin
                 case (inject_state)
@@ -239,25 +242,25 @@ module TaskInjector
                             SEND_IDLE: begin
                                 /* DATA_AV for App descriptor */
                                 out_header    <= '0;
-                                out_header[0] <= MAPPER_ADDRESS;     /* Target address   */
-                                out_header[1] <= HEADER_SIZE - 2'd2; /* Payload size     */
-                                out_header[2] <= DATA_AV;            /* Service          */
-                                out_header[3] <= INJECTOR_ADDRESSS;  /* Producer task    */
-                                out_header[4] <= '0;                 /* Consumer task    */
-                                out_header[8] <= INJECTOR_ADDRESSS;  /* Producer address */
+                                out_header[0] <= MAPPER_ADDRESS;   /* Target address   */
+                                out_header[1] <= HEADER_SIZE - 2;  /* Payload size     */
+                                out_header[2] <= DATA_AV;          /* Service          */
+                                out_header[3] <= INJECTOR_ADDRESS; /* Producer task    */
+                                out_header[4] <= '0;               /* Consumer task    */
+                                out_header[8] <= INJECTOR_ADDRESS; /* Producer address */
                             end
                             SEND_WAIT_REQUEST: begin
                                 /* DELIVERY for App descriptor */
                                 out_header    <= '0;
-                                out_header[0] <= in_header[8];            /* Target address */
+                                out_header[0] <= in_header[8];                   /* Target address */
                                 out_header[1] <= (
-                                    {task_cnt, 1'b0} + HEADER_SIZE + 1'b1 /* Payload size   */
+                                    {22'b0 , task_cnt, 1'b0} + (HEADER_SIZE + 1) /* Payload size   */
                                 );
-                                out_header[2] <= MESSAGE_DELIVERY;        /* Service        */
-                                out_header[3] <= in_header[3];            /* Producer task  */
-                                out_header[4] <= in_header[4];            /* Consumer task  */
+                                out_header[2] <= MESSAGE_DELIVERY;               /* Service        */
+                                out_header[3] <= in_header[3];                   /* Producer task  */
+                                out_header[4] <= in_header[4];                   /* Consumer task  */
                                 out_header[8] <= (
-                                    {({task_cnt, 1'b0} + 2'd3), 2'b0}     /* Message length */
+                                    {({20'b0 , task_cnt, 1'b0} + 29'd3), 2'b0}   /* Message length */
                                 );
                             end
                             default: ;
@@ -267,12 +270,12 @@ module TaskInjector
                         out_header     <= '0;
                         out_header[0]  <= (INJECT_MAPPER && task_cnt == '0) /* Target address */
                             ? MAPPER_ADDRESS 
-                            : in_payload[current_task + 2'd2];
+                            : in_payload[current_task + 8'd2];
                         out_header[1]  <= src_data_i;                       /* Payload size   */
                         out_header[2]  <= TASK_ALLOCATION;                  /* Service        */
                         out_header[3]  <= (INJECT_MAPPER && task_cnt == '0) /* Task ID        */
                             ? '0
-                            : {in_payload[1][7:0], current_task};
+                            : {16'b0, in_payload[1][7:0], current_task[7:0]};
                         out_header[4]  <= (INJECT_MAPPER && task_cnt == '0) /* Mapper address */
                             ? '1
                             : MAPPER_ADDRESS;
@@ -302,7 +305,7 @@ module TaskInjector
                         out_header[12] <= src_data_i; /* Entry point */
 
                         if (src_rx_i)
-                            out_header[1] <= out_header[1] + HEADER_SIZE - 2'd2;
+                            out_header[1] <= out_header[1] + (HEADER_SIZE - 2);
                     end
                     default: ;
                 endcase
@@ -381,7 +384,7 @@ module TaskInjector
                         aux_header_size <= 2'd2;
                         aux_header      <= '0;
                         aux_header[0]   <= NEW_APP;
-                        aux_header[1]   <= INJECTOR_ADDRESSS;
+                        aux_header[1]   <= INJECTOR_ADDRESS;
                     end
                 end
                 default: aux_header_size <= '0;
@@ -424,7 +427,7 @@ module TaskInjector
         end
         else begin
             if (receive_state == RECEIVE_SIZE)
-                receive_cntr <= 1'b1;
+                receive_cntr <= 32'b1;
             else if (
                 noc_rx_i 
                 && (receive_state inside {RECEIVE_PACKET, RECEIVE_DROP})
@@ -505,7 +508,7 @@ module TaskInjector
                     if (receive_cntr == in_header[1] - 1'b1)
                         receive_next_state = RECEIVE_SERVICE;
                     else if (
-                        receive_cntr == MAX_PAYLOAD_SIZE + HEADER_SIZE - 2'd3
+                        receive_cntr == MAX_PAYLOAD_SIZE + HEADER_SIZE - 3
                     )
                         receive_next_state = RECEIVE_DROP;
                     else
