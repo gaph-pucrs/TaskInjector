@@ -8,19 +8,12 @@ module AppParser
     input  logic                     clk_i,
     input  logic                     rst_ni,
 
-    input  logic [63:0]              tick_cnt_i,
-
     output logic                     eoa_o,
     output logic                     tx_o,
     input  logic                     credit_i,
     output logic [(FLIT_SIZE - 1):0] data_o
 );
-
-    parameter MS_DIV = SIM_FREQ / 1_000;
     
-    int unsigned ms_cnt;
-    assign ms_cnt = 32'(tick_cnt_i / 64'(MS_DIV));
-
     string app_name;
     string task_name;
 
@@ -60,7 +53,7 @@ module AppParser
 
             $fscanf(app_start_fd, "%u", start_time);
 
-            wait(ms_cnt >= start_time);
+            wait(($time() / 1_000_000 ) >= start_time);
 
         ////////////////////////////////////////////////////////////////////////
         // Descriptor injection
