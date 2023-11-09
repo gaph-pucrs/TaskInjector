@@ -130,12 +130,12 @@ module AppParser
             end
 
             $fclose(app_descr_fd);
+            tx_o   = 1'b0;
         end
 
         $fclose(app_start_fd);
 
         eoa_o = 1'b1;
-        tx_o  = 1'b0;
     end
 
 endmodule

@@ -76,6 +76,8 @@ module MAParser
 
         task_descr_fd = $fopen({PATH, "/management/", task_name, "/", task_name, ".txt"}, "r");
 
+        tx_o   = 1'b1;
+
         $fscanf(task_descr_fd, "%u", data_o);
         binary_size = data_o;
 
