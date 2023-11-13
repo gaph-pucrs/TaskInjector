@@ -42,7 +42,7 @@ module MAParser
             $finish();
         end
 
-        $fscanf(ma_start_fd, "%d", mapper_address_o);
+        $fscanf(ma_start_fd, "%x", mapper_address_o);
 
         if (mapper_address_o == '1) begin
             $display("[TaskParser] mapper_task should be statically mapped");
@@ -55,10 +55,10 @@ module MAParser
             $finish();
         end
 
-        $fgets(task_name, ma_tasks_fd);
+        $fscanf(ma_tasks_fd, "%s\n", task_name);
 
         if (task_name != "mapper_task") begin
-            $display("[MAParser] First MA task should be mapper_task");
+            $display("[MAParser] First MA task should be mapper_task. Found: %s", task_name);
             $finish();
         end
         
@@ -74,36 +74,45 @@ module MAParser
     // Mapper injection
     ////////////////////////////////////////////////////////////////////////////
 
-        task_descr_fd = $fopen({PATH, "/management/", task_name, "/", task_name, ".txt"}, "r");
+        task_descr_fd = $fopen($sformatf("%s/management/%s/%s.txt", PATH, task_name, task_name), "r");
+        if (task_descr_fd == '0) begin
+            $display("[MAParser] Could not open %s", task_name);
+            $finish();
+        end
 
         tx_o   = 1'b1;
 
-        $fscanf(task_descr_fd, "%u", data_o);
+        $fscanf(task_descr_fd, "%x", data_o);
         binary_size = data_o;
 
-        wait(credit_i == 1'b1); /* Inject text size  */
-        @(posedge clk_i);
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject text size  */
 
-        $fscanf(task_descr_fd, "%u", data_o);
+        $display("[MAParser] Injected text size");
+
+        $fscanf(task_descr_fd, "%x", data_o);
         binary_size += data_o;
         
-        wait(credit_i == 1'b1); /* Inject data size  */
-        @(posedge clk_i);
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject data size  */
 
-        $fscanf(task_descr_fd, "%u", data_o);
-        wait(credit_i == 1'b1); /* Inject BSS size  */
-        @(posedge clk_i);
+        $display("[MAParser] Injected data size");
 
-        $fscanf(task_descr_fd, "%u", data_o);
-        wait(credit_i == 1'b1); /* Inject entry point */
-        @(posedge clk_i);
+        $fscanf(task_descr_fd, "%x", data_o);
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject BSS size  */
+
+        $display("[MAParser] Injected BSS size");
+
+        $fscanf(task_descr_fd, "%x", data_o);
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject entry point */
+
+        $display("[MAParser] Injected entry point");
 
         binary_size /= 4;   /* Convert to 32-bit words */
         for (int b = 0; b < binary_size; b++) begin
-            $fscanf(task_descr_fd, "%u", data_o);
-            wait(credit_i == 1'b1);
-            @(posedge clk_i);
+            $fscanf(task_descr_fd, "%x", data_o);
+            @(posedge clk_i iff credit_i == 1'b1);
         end
+
+        $display("[MAParser] Injection finished");
 
         $fclose(task_descr_fd);
 
@@ -112,31 +121,25 @@ module MAParser
     ////////////////////////////////////////////////////////////////////////////
 
         data_o = ma_task_cnt;
-        wait(credit_i == 1'b1); /* Inject graph descriptor size */
-        @(posedge clk_i);
-        wait(credit_i == 1'b1); /* Inject number of tasks */
-        @(posedge clk_i);
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject graph descriptor size */
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject number of tasks */
 
         data_o = {16'b0, mapper_address_o};
-        wait(credit_i == 1'b1); /* Inject mapping of first task (mapper) */
-        @(posedge clk_i);
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject mapping of first task (mapper) */
 
-        $fscanf(ma_start_fd, "%u", data_o);
-        wait(credit_i == 1'b1); /* Inject task type tag of first task (mapper) */
-        @(posedge clk_i);
+        $fscanf(ma_start_fd, "%x", data_o);
+        @(posedge clk_i iff credit_i == 1'b1); /* Inject task type tag of first task (mapper) */
 
         for (int t = 1; t < ma_task_cnt; t++) begin
-            $fscanf(ma_start_fd, "%u", data_o);
-            wait(credit_i == 1'b1); /* Inject mapping + ttt of remaining tasks */
-            @(posedge clk_i);
+            $fscanf(ma_start_fd, "%x", data_o);
+            @(posedge clk_i iff credit_i == 1'b1); /* Inject mapping + ttt of remaining tasks */
         end
 
         $fclose(ma_start_fd);
 
         data_o = '0;    /* Insert null descriptor graph for MA */
         for (int t = 0; t < ma_task_cnt; t++) begin
-            wait(credit_i == 1'b1); /* Inject mapping + ttt of remaining tasks */
-            @(posedge clk_i);
+            @(posedge clk_i iff credit_i == 1'b1); /* Inject mapping + ttt of remaining tasks */
         end
 
     ////////////////////////////////////////////////////////////////////////////
@@ -148,31 +151,26 @@ module MAParser
 
             task_descr_fd = $fopen({PATH, "/management/", task_name, "/", task_name, ".txt"}, "r");
 
-            $fscanf(task_descr_fd, "%u", data_o);
+            $fscanf(task_descr_fd, "%x", data_o);
             binary_size = data_o;
 
-            wait(credit_i == 1'b1); /* Inject text size  */
-            @(posedge clk_i);
+            @(posedge clk_i iff credit_i == 1'b1); /* Inject text size  */
 
-            $fscanf(task_descr_fd, "%u", data_o);
+            $fscanf(task_descr_fd, "%x", data_o);
             binary_size += data_o;
             
-            wait(credit_i == 1'b1); /* Inject data size  */
-            @(posedge clk_i);
+            @(posedge clk_i iff credit_i == 1'b1); /* Inject data size  */
 
-            $fscanf(task_descr_fd, "%u", data_o);
-            wait(credit_i == 1'b1); /* Inject BSS size  */
-            @(posedge clk_i);
+            $fscanf(task_descr_fd, "%x", data_o);
+            @(posedge clk_i iff credit_i == 1'b1); /* Inject BSS size  */
 
-            $fscanf(task_descr_fd, "%u", data_o);
-            wait(credit_i == 1'b1); /* Inject entry point */
-            @(posedge clk_i);
+            $fscanf(task_descr_fd, "%x", data_o);
+            @(posedge clk_i iff credit_i == 1'b1); /* Inject entry point */
 
             binary_size /= 4;   /* Convert to 32-bit words */
             for (int b = 0; b < binary_size; b++) begin
-                $fscanf(task_descr_fd, "%u", data_o);
-                wait(credit_i == 1'b1);
-                @(posedge clk_i);
+                $fscanf(task_descr_fd, "%x", data_o);
+                @(posedge clk_i iff credit_i == 1'b1);
             end
 
             $fclose(task_descr_fd);
