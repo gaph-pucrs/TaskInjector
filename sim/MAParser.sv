@@ -36,7 +36,7 @@ module MAParser
             $finish();
         end
 
-        $fscanf(ma_start_fd, "%u", ma_task_cnt);
+        $fscanf(ma_start_fd, "%d", ma_task_cnt);
         if (ma_task_cnt < 1) begin
             $display("[TaskParser] MA should have at least 1 task");
             $finish();
