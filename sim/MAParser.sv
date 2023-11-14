@@ -82,29 +82,23 @@ module MAParser
 
         tx_o   = 1'b1;
 
+        $display("[%0d] [MAParser] Injecting task %s to PE %0x", $time(), task_name, mapper_address_o);
+
         $fscanf(task_descr_fd, "%x", data_o);
         binary_size = data_o;
 
         @(posedge clk_i iff credit_i == 1'b1); /* Inject text size  */
-
-        $display("[MAParser] Injected text size");
 
         $fscanf(task_descr_fd, "%x", data_o);
         binary_size += data_o;
         
         @(posedge clk_i iff credit_i == 1'b1); /* Inject data size  */
 
-        $display("[MAParser] Injected data size");
-
         $fscanf(task_descr_fd, "%x", data_o);
         @(posedge clk_i iff credit_i == 1'b1); /* Inject BSS size  */
 
-        $display("[MAParser] Injected BSS size");
-
         $fscanf(task_descr_fd, "%x", data_o);
         @(posedge clk_i iff credit_i == 1'b1); /* Inject entry point */
-
-        $display("[MAParser] Injected entry point");
 
         binary_size /= 4;   /* Convert to 32-bit words */
         for (int b = 0; b < binary_size; b++) begin
@@ -112,13 +106,15 @@ module MAParser
             @(posedge clk_i iff credit_i == 1'b1);
         end
 
-        $display("[MAParser] Injection finished");
+        $display("[%0d] [MAParser] Injection of %s finished", $time(), task_name);
 
         $fclose(task_descr_fd);
 
     ////////////////////////////////////////////////////////////////////////////
     // Descriptor injection
     ////////////////////////////////////////////////////////////////////////////
+
+        $display("[%0d] [MAParser] Injecting MA descriptor", $time());
 
         data_o = ma_task_cnt;
         @(posedge clk_i iff credit_i == 1'b1); /* Inject graph descriptor size */
@@ -141,6 +137,8 @@ module MAParser
         for (int t = 0; t < ma_task_cnt; t++) begin
             @(posedge clk_i iff credit_i == 1'b1); /* Inject mapping + ttt of remaining tasks */
         end
+
+        $display("[%0d] [MAParser] Injection of MA descriptor finished", $time());
 
     ////////////////////////////////////////////////////////////////////////////
     // Remaining tasks injection
