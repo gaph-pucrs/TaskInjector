@@ -89,7 +89,6 @@ module TaskInjector
         else begin
             case (inject_state)
                 INJECTOR_RECEIVE_TASK_CNT: task_cnt <= src_data_i[8:0];
-                INJECTOR_MAP:              task_cnt <= in_payload[0][8:0];
                 default: ;
             endcase
         end
@@ -136,9 +135,11 @@ module TaskInjector
                     ? INJECTOR_MAP 
                     : INJECTOR_SEND_DESCRIPTOR;
             INJECTOR_MAP:
-                inject_next_state = (receive_state == RECEIVE_WAIT_ALLOC) 
-                    ? INJECTOR_RECEIVE_TXT_SZ 
-                    : INJECTOR_MAP;
+                inject_next_state = !(receive_state == RECEIVE_WAIT_ALLOC) 
+                    ? INJECTOR_MAP 
+                    : (INJECT_MAPPER && task_cnt == 1'b1)
+                        ? INJECTOR_WAIT_COMPLETE
+                        : INJECTOR_RECEIVE_TXT_SZ;
             INJECTOR_RECEIVE_TXT_SZ:
                 inject_next_state = src_rx_i 
                     ? INJECTOR_RECEIVE_DATA_SZ 
@@ -454,7 +455,7 @@ module TaskInjector
         end
         else begin
             if (receive_state == RECEIVE_SIZE)
-                receive_cntr <= 32'b1;
+                receive_cntr <= '0;
             else if (
                 noc_rx_i 
                 && (receive_state inside {RECEIVE_PACKET, RECEIVE_DROP})
