@@ -1,10 +1,10 @@
 module TaskInjector
     import TaskInjectorPkg::*;
 #(
-    parameter INJECTOR_ADDRESS = 0,
-    parameter FLIT_SIZE        = 32,
-    parameter MAX_PAYLOAD_SIZE = 32,
-    parameter INJECT_MAPPER    = 0
+    parameter logic [31:0] INJECTOR_ADDRESS = 32'hE0000000,
+    parameter              FLIT_SIZE        = 32,
+    parameter              MAX_PAYLOAD_SIZE = 32,
+    parameter              INJECT_MAPPER    = 0
 )
 (
     input  logic                     clk_i,
