@@ -137,7 +137,7 @@ module TaskInjector
             INJECTOR_MAP:
                 inject_next_state = !(receive_state == RECEIVE_WAIT_ALLOC) 
                     ? INJECTOR_MAP 
-                    : (INJECT_MAPPER && task_cnt == 1'b1)
+                    : (INJECT_MAPPER && task_cnt == 9'b1)
                         ? INJECTOR_WAIT_COMPLETE
                         : INJECTOR_RECEIVE_TXT_SZ;
             INJECTOR_RECEIVE_TXT_SZ:
