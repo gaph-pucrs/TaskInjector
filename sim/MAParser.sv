@@ -61,6 +61,12 @@ module MAParser
             $display("[MAParser] First MA task should be mapper_task. Found: %s", task_name);
             $finish();
         end
+
+        task_descr_fd = $fopen($sformatf("%s/management/%s/%s.txt", PATH, task_name, task_name), "r");
+        if (task_descr_fd == '0) begin
+            $display("[MAParser] Could not open %s", task_name);
+            $finish();
+        end
         
     ////////////////////////////////////////////////////////////////////////////
     // Reset control
@@ -68,21 +74,15 @@ module MAParser
 
         tx_o   = 1'b0;
         data_o = '0;
-        @(posedge rst_ni);
+        @(posedge clk_i iff rst_ni == 1'b1);
 
     ////////////////////////////////////////////////////////////////////////////
     // Mapper injection
     ////////////////////////////////////////////////////////////////////////////
 
-        task_descr_fd = $fopen($sformatf("%s/management/%s/%s.txt", PATH, task_name, task_name), "r");
-        if (task_descr_fd == '0) begin
-            $display("[MAParser] Could not open %s", task_name);
-            $finish();
-        end
+        $display("[%0d] [MAParser] Injecting task %s to PE %0x", $time(), task_name, mapper_address_o);
 
         tx_o   = 1'b1;
-
-        $display("[%0d] [MAParser] Injecting task %s to PE %0x", $time(), task_name, mapper_address_o);
 
         $fscanf(task_descr_fd, "%x", data_o);
         binary_size = data_o;
