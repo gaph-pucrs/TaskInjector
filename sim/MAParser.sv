@@ -126,9 +126,12 @@ module MAParser
         $fscanf(ma_start_fd, "%x", data_o);
         @(posedge clk_i iff credit_i == 1'b1); /* Inject task type tag of first task (mapper) */
 
+        /* Inject mapping + ttt of remaining tasks */
         for (int t = 1; t < ma_task_cnt; t++) begin
             $fscanf(ma_start_fd, "%x", data_o);
-            @(posedge clk_i iff credit_i == 1'b1); /* Inject mapping + ttt of remaining tasks */
+            @(posedge clk_i iff credit_i == 1'b1);
+            $fscanf(ma_start_fd, "%x", data_o);
+            @(posedge clk_i iff credit_i == 1'b1);
         end
 
         $fclose(ma_start_fd);

@@ -271,11 +271,11 @@ module TaskInjector
                             SEND_WAIT_REQUEST: begin
                                 /* DELIVERY for App descriptor */
                                 out_header    <= '0;
-                                out_header[0] <= in_header[8];                   /* Target address */
-                                out_header[1] <= (
-                                    {22'b0 , task_cnt, 1'b0} 
-                                    + {15'b0, graph_size}                        /* Payload size   */
-                                    + (HEADER_SIZE + 1) 
+                                out_header[0] <= in_header[8];                   /* Target address         */
+                                out_header[1] <= (                               /* Payload size           */
+                                    {22'b0, task_cnt, 1'b0}                      /* 2 flits per task       */
+                                    + {15'b0, graph_size}                        /* Graph size             */
+                                    + (HEADER_SIZE + 2)                          /* -2 + 2 (aux) + 2 (hdr) */
                                 );
                                 out_header[2] <= MESSAGE_DELIVERY;               /* Service        */
                                 out_header[3] <= in_header[3];                   /* Producer task  */
@@ -283,9 +283,9 @@ module TaskInjector
                                 out_header[8] <= (
                                     {
                                         (
-                                            {20'b0 , task_cnt, 1'b0} 
+                                            {20'b0, task_cnt, 1'b0} 
                                             + {12'b0, graph_size}                /* Message length */
-                                            + 29'd3
+                                            + 29'd4
                                         ), 
                                         2'b0
                                     }
