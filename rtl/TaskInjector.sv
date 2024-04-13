@@ -55,8 +55,8 @@ module TaskInjector
 
     /* Signals below should have 1 bit more to hold 'size' and not just max value */
     logic [($clog2(HEADER_SIZE)):0]         out_header_idx;
-    logic [($clog2(MAX_AUX_HEADER_SIZE)):0] aux_header_idx;
-    logic [($clog2(MAX_AUX_HEADER_SIZE)):0] aux_header_size;
+    logic [($clog2(MAX_AUX_HEADER_SIZE+1)-1):0] aux_header_idx;
+    logic [($clog2(MAX_AUX_HEADER_SIZE+1)-1):0] aux_header_size;
 
     typedef enum logic [10:0] {
         RECEIVE_IDLE         = 11'b00000000001,
@@ -271,11 +271,11 @@ module TaskInjector
                             SEND_WAIT_REQUEST: begin
                                 /* DELIVERY for App descriptor */
                                 out_header    <= '0;
-                                out_header[0] <= in_header[8];                   /* Target address         */
-                                out_header[1] <= (                               /* Payload size           */
-                                    {22'b0, task_cnt, 1'b0}                      /* 2 flits per task       */
-                                    + {15'b0, graph_size}                        /* Graph size             */
-                                    + (HEADER_SIZE + 2)                          /* -2 + 2 (aux) + 2 (hdr) */
+                                out_header[0] <= in_header[8];                   /* Target address          */
+                                out_header[1] <= (                               /* Payload size            */
+                                    {22'b0, task_cnt, 1'b0}                      /* 2 flits per task        */
+                                    + {15'b0, graph_size}                        /* Graph size              */
+                                    + (HEADER_SIZE + 1)                          /* -2 + 2 (aux) + 1 (size) */
                                 );
                                 out_header[2] <= MESSAGE_DELIVERY;               /* Service        */
                                 out_header[3] <= in_header[3];                   /* Producer task  */
@@ -285,7 +285,7 @@ module TaskInjector
                                         (
                                             {20'b0, task_cnt, 1'b0} 
                                             + {12'b0, graph_size}                /* Message length */
-                                            + 29'd4
+                                            + 29'd3
                                         ), 
                                         2'b0
                                     }
