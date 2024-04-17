@@ -32,26 +32,26 @@ module MAParser
         ma_start_fd = $fopen({PATH, "/ma_start.txt"}, "r");
 
         if (ma_start_fd == '0) begin
-            $display("[TaskParser] Could not open ma_start.txt");
+            $display("[MAParser] Could not open ma_start.txt");
             $finish();
         end
 
         $fscanf(ma_start_fd, "%d", ma_task_cnt);
         if (ma_task_cnt < 1) begin
-            $display("[TaskParser] MA should have at least 1 task");
+            $display("[MAParser] MA should have at least 1 task");
             $finish();
         end
 
         $fscanf(ma_start_fd, "%x", mapper_address_o);
 
         if (mapper_address_o == '1) begin
-            $display("[TaskParser] mapper_task should be statically mapped");
+            $display("[MAParser] mapper_task should be statically mapped");
             $finish();
         end
 
-        ma_tasks_fd = $fopen({PATH, "/management/ma_tasks.txt"}, "r");
+        ma_tasks_fd = $fopen({PATH, "/management/ma.txt"}, "r");
         if (ma_tasks_fd == '0) begin
-            $display("[MAParser] Could not open management/ma_tasks.txt");
+            $display("[MAParser] Could not open management/ma.txt");
             $finish();
         end
 
@@ -150,7 +150,11 @@ module MAParser
         for (int t = 1; t < ma_task_cnt; t++) begin
             $fgets(task_name, ma_tasks_fd);
 
-            task_descr_fd = $fopen({PATH, "/management/", task_name, "/", task_name, ".txt"}, "r");
+            task_descr_fd = $fopen($sformatf("%s/management/%s/%s.txt", PATH, task_name, task_name), "r");
+            if (task_descr_fd == '0) begin
+                $display("[MAParser] Could not open management/%s/%s.txt", task_name, task_name);
+                $finish();
+            end
 
             $fscanf(task_descr_fd, "%x", data_o);
             binary_size = data_o;
