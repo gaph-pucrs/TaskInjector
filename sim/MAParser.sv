@@ -156,6 +156,8 @@ module MAParser
                 $finish();
             end
 
+            $display("[%0d] [MAParser] Injecting task %s to PE %0x", $time(), task_name, mapper_address_o);
+
             $fscanf(task_descr_fd, "%x", data_o);
             binary_size = data_o;
 
@@ -177,6 +179,8 @@ module MAParser
                 $fscanf(task_descr_fd, "%x", data_o);
                 @(posedge clk_i iff credit_i == 1'b1);
             end
+
+            $display("[%0d] [MAParser] Injection of %s finished", $time(), task_name);
 
             $fclose(task_descr_fd);
         end
