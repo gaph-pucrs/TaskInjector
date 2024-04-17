@@ -1,3 +1,6 @@
+`ifndef TASK_INJECTOR_PKG
+`define TASK_INJECTOR_PKG
+
 package TaskInjectorPkg;
 
     parameter HEADER_SIZE = 13;
@@ -11,3 +14,5 @@ package TaskInjectorPkg;
     parameter logic [31:0] TASK_ALLOCATION        = 32'h00000040;
 
 endpackage
+
+`endif

@@ -1,3 +1,5 @@
+`include "TaskInjectorPkg.sv"
+
 module TaskInjector
     import TaskInjectorPkg::*;
 #(
