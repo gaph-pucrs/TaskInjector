@@ -1,6 +1,5 @@
 module AppParser
 #(
-    parameter PATH          = "",
     parameter FLIT_SIZE     = 32
 )
 (
@@ -28,7 +27,7 @@ module AppParser
     initial begin
 
 
-        app_start_fd = $fopen({PATH, "/app_start.txt"}, "r");
+        app_start_fd = $fopen("app_start.txt", "r");
         if (app_start_fd == '0) begin
             $display("[AppParser] Could not open app_start.txt");
             $finish();
@@ -77,7 +76,7 @@ module AppParser
                 @(posedge clk_i iff credit_i == 1'b1); /* Inject task type tag */
             end
 
-            app_descr_fd = $fopen($sformatf("%s/applications/%s.txt", PATH, app_name), "r");
+            app_descr_fd = $fopen($sformatf("applications/%s.txt", app_name), "r");
             if (app_descr_fd == '0) begin
                 $display("[AppParser] Could not open applications/%s.txt", app_name);
                 $finish();
@@ -96,7 +95,7 @@ module AppParser
             for (int t = 0; t < app_task_cnt; t++) begin
                 $fscanf(app_descr_fd, "%s\n", task_name);
 
-                task_descr_fd = $fopen($sformatf("%s/applications/%s/%s.txt", PATH, app_name, task_name), "r");
+                task_descr_fd = $fopen($sformatf("applications/%s/%s.txt", app_name, task_name), "r");
                 if (task_descr_fd == '0) begin
                     $display("[AppParser] Could not open applications/%s/%s.txt", app_name, task_name);
                     $finish();

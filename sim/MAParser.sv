@@ -1,6 +1,5 @@
 module MAParser
 #(
-    parameter PATH          = "",
     parameter FLIT_SIZE     = 32
 )
 (
@@ -29,7 +28,7 @@ module MAParser
     // Mapper task address fetch
     ////////////////////////////////////////////////////////////////////////////
     
-        ma_start_fd = $fopen({PATH, "/ma_start.txt"}, "r");
+        ma_start_fd = $fopen("ma_start.txt", "r");
 
         if (ma_start_fd == '0) begin
             $display("[MAParser] Could not open ma_start.txt");
@@ -49,7 +48,7 @@ module MAParser
             $finish();
         end
 
-        ma_tasks_fd = $fopen({PATH, "/management/ma.txt"}, "r");
+        ma_tasks_fd = $fopen("management/ma.txt", "r");
         if (ma_tasks_fd == '0) begin
             $display("[MAParser] Could not open management/ma.txt");
             $finish();
@@ -62,7 +61,7 @@ module MAParser
             $finish();
         end
 
-        task_descr_fd = $fopen($sformatf("%s/management/%s/%s.txt", PATH, task_name, task_name), "r");
+        task_descr_fd = $fopen($sformatf("management/%s/%s.txt", task_name, task_name), "r");
         if (task_descr_fd == '0) begin
             $display("[MAParser] Could not open %s", task_name);
             $finish();
@@ -150,7 +149,7 @@ module MAParser
         for (int t = 1; t < ma_task_cnt; t++) begin
             $fgets(task_name, ma_tasks_fd);
 
-            task_descr_fd = $fopen($sformatf("%s/management/%s/%s.txt", PATH, task_name, task_name), "r");
+            task_descr_fd = $fopen($sformatf("management/%s/%s.txt", task_name, task_name), "r");
             if (task_descr_fd == '0) begin
                 $display("[MAParser] Could not open management/%s/%s.txt", task_name, task_name);
                 $finish();
