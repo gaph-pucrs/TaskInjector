@@ -45,12 +45,13 @@ module AppParser
     ////////////////////////////////////////////////////////////////////////////
     // Application start control
     ////////////////////////////////////////////////////////////////////////////
+        $fscanf(app_start_fd, "%s\n", app_name);
         while (!$feof(app_start_fd)) begin
-            $fscanf(app_start_fd, "%s\n", app_name);
 
             $fscanf(app_start_fd, "%d", start_time);
 
-            @(posedge clk_i iff ($time() / 1_000_000 ) >= start_time);
+            if (($time() / 1_000_000 ) < start_time)
+                @(posedge clk_i iff ($time() / 1_000_000 ) >= start_time);
 
             $display("[%0d] [AppParser] Injecting %s descriptor", $time(), app_name);
 
@@ -131,6 +132,7 @@ module AppParser
             end
 
             $fclose(app_descr_fd);
+            $fscanf(app_start_fd, "%s\n", app_name);
             tx_o   = 1'b0;
         end
 
