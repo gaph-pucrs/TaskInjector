@@ -31,39 +31,39 @@ module MAParser
         ma_start_fd = $fopen("ma_start.txt", "r");
 
         if (ma_start_fd == '0) begin
-            $display("[MAParser] Could not open ma_start.txt");
+            $display("[ MAParser] Could not open ma_start.txt");
             $finish();
         end
 
         $fscanf(ma_start_fd, "%d", ma_task_cnt);
         if (ma_task_cnt < 1) begin
-            $display("[MAParser] MA should have at least 1 task");
+            $display("[ MAParser] MA should have at least 1 task");
             $finish();
         end
 
         $fscanf(ma_start_fd, "%x", mapper_address_o);
 
         if (mapper_address_o == '1) begin
-            $display("[MAParser] mapper_task should be statically mapped");
+            $display("[ MAParser] mapper_task should be statically mapped");
             $finish();
         end
 
         ma_tasks_fd = $fopen("management/ma.txt", "r");
         if (ma_tasks_fd == '0) begin
-            $display("[MAParser] Could not open management/ma.txt");
+            $display("[ MAParser] Could not open management/ma.txt");
             $finish();
         end
 
         $fscanf(ma_tasks_fd, "%s\n", task_name);
 
         if (task_name != "mapper_task") begin
-            $display("[MAParser] First MA task should be mapper_task. Found: %s", task_name);
+            $display("[ MAParser] First MA task should be mapper_task. Found: %s", task_name);
             $finish();
         end
 
         task_descr_fd = $fopen($sformatf("management/%s/%s.txt", task_name, task_name), "r");
         if (task_descr_fd == '0) begin
-            $display("[MAParser] Could not open %s", task_name);
+            $display("[ MAParser] Could not open %s", task_name);
             $finish();
         end
         
@@ -79,7 +79,7 @@ module MAParser
     // Mapper injection
     ////////////////////////////////////////////////////////////////////////////
 
-        $display("[%0d] [MAParser] Injecting task %s to PE %0x", $time(), task_name, mapper_address_o);
+        $display("[%7.3f] [ MAParser] Injecting task %s to PE %0x", $time()/1_000_000.0, task_name, mapper_address_o);
 
         tx_o   = 1'b1;
 
@@ -105,7 +105,7 @@ module MAParser
             @(posedge clk_i iff credit_i == 1'b1);
         end
 
-        $display("[%0d] [MAParser] Injection of %s finished", $time(), task_name);
+        $display("[%7.3f] [ MAParser] Injection of %s finished", $time()/1_000_000.0, task_name);
 
         $fclose(task_descr_fd);
 
@@ -113,7 +113,7 @@ module MAParser
     // Descriptor injection
     ////////////////////////////////////////////////////////////////////////////
 
-        $display("[%0d] [MAParser] Injecting MA descriptor", $time());
+        $display("[%7.3f] [ MAParser] Injecting MA descriptor", $time()/1_000_000.0);
 
         data_o = ma_task_cnt;
         @(posedge clk_i iff credit_i == 1'b1); /* Inject graph descriptor size */
@@ -140,7 +140,7 @@ module MAParser
             @(posedge clk_i iff credit_i == 1'b1); /* Inject mapping + ttt of remaining tasks */
         end
 
-        $display("[%0d] [MAParser] Injection of MA descriptor finished", $time());
+        $display("[%7.3f] [ MAParser] Injection of MA descriptor finished", $time()/1_000_000.0);
 
     ////////////////////////////////////////////////////////////////////////////
     // Remaining tasks injection
@@ -151,11 +151,11 @@ module MAParser
 
             task_descr_fd = $fopen($sformatf("management/%s/%s.txt", task_name, task_name), "r");
             if (task_descr_fd == '0) begin
-                $display("[MAParser] Could not open management/%s/%s.txt", task_name, task_name);
+                $display("[ MAParser] Could not open management/%s/%s.txt", task_name, task_name);
                 $finish();
             end
 
-            $display("[%0d] [MAParser] Injecting task %s to PE %0x", $time(), task_name, mapper_address_o);
+            $display("[%7.3f] [ MAParser] Injecting task %s to PE %0x", $time()/1_000_000.0, task_name, mapper_address_o);
 
             $fscanf(task_descr_fd, "%x", data_o);
             binary_size = data_o;
@@ -179,7 +179,7 @@ module MAParser
                 @(posedge clk_i iff credit_i == 1'b1);
             end
 
-            $display("[%0d] [MAParser] Injection of %s finished", $time(), task_name);
+            $display("[%7.3f] [ MAParser] Injection of %s finished", $time()/1_000_000.0, task_name);
 
             $fclose(task_descr_fd);
         end

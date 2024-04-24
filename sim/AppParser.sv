@@ -53,7 +53,7 @@ module AppParser
             if (($time() / 1_000_000 ) < start_time)
                 @(posedge clk_i iff ($time() / 1_000_000 ) >= start_time);
 
-            $display("[%0d] [AppParser] Injecting %s descriptor", $time(), app_name);
+            $display("[%7.3f] [AppParser] Injecting %s descriptor", $time()/1_000_000.0, app_name);
 
         ////////////////////////////////////////////////////////////////////////
         // Descriptor injection
@@ -88,7 +88,7 @@ module AppParser
                 @(posedge clk_i iff credit_i == 1'b1); /* Inject graph descriptor  */
             end
 
-            $display("[%0d] [AppParser] Injection of %s descriptor finished", $time(), app_name);
+            $display("[%7.3f] [AppParser] Injection of %s descriptor finished", $time()/1_000_000.0, app_name);
 
         ////////////////////////////////////////////////////////////////////////
         // Task injection
@@ -102,7 +102,7 @@ module AppParser
                     $finish();
                 end
 
-                $display("[%0d] [AppParser] Injecting task %s", $time(), task_name);
+                $display("[%7.3f] [AppParser] Injecting task %s", $time()/1_000_000.0, task_name);
 
                 $fscanf(task_descr_fd, "%x", data_o);
                 binary_size = data_o;
@@ -126,7 +126,7 @@ module AppParser
                     @(posedge clk_i iff credit_i == 1'b1);
                 end
 
-                $display("[%0d] [AppParser] Injection of %s finished", $time(), task_name);
+                $display("[%7.3f] [AppParser] Injection of %s finished", $time()/1_000_000.0, task_name);
 
                 $fclose(task_descr_fd);
             end
