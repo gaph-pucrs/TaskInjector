@@ -12,6 +12,7 @@ package TaskInjectorPkg;
     parameter logic [31:0] DATA_AV                = 32'h00000031;
     parameter logic [31:0] APP_MAPPING_COMPLETE   = 32'h00000034;
     parameter logic [31:0] TASK_ALLOCATION        = 32'h00000040;
+    parameter logic [31:0] EOA                    = 32'h00000071;
 
 endpackage
 

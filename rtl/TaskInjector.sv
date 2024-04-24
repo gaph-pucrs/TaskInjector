@@ -12,6 +12,7 @@ module TaskInjector
     input  logic                     clk_i,
     input  logic                     rst_ni,
 
+    input  logic                     src_eoa_i,
     input  logic                     src_rx_i,
     output logic                     src_credit_o,
     input  logic [(FLIT_SIZE - 1):0] src_data_i,
@@ -30,18 +31,20 @@ module TaskInjector
 
     localparam MAX_AUX_HEADER_SIZE = 2;
 
-    typedef enum logic [10:0] {
-        INJECTOR_IDLE             = 11'b00000000001,
-        INJECTOR_RECEIVE_TASK_CNT = 11'b00000000010,
-        INJECTOR_SEND_DESCRIPTOR  = 11'b00000000100,
-        INJECTOR_MAP              = 11'b00000001000,
-        INJECTOR_RECEIVE_TXT_SZ   = 11'b00000010000,
-        INJECTOR_RECEIVE_DATA_SZ  = 11'b00000100000,
-        INJECTOR_RECEIVE_BSS_SZ   = 11'b00001000000,
-        INJECTOR_RECEIVE_ENTRY    = 11'b00010000000,
-        INJECTOR_SEND_TASK        = 11'b00100000000,
-        INJECTOR_NEXT_TASK        = 11'b01000000000,
-        INJECTOR_WAIT_COMPLETE    = 11'b10000000000
+    typedef enum logic [12:0] {
+        INJECTOR_IDLE             = 13'b0000000000001,
+        INJECTOR_RECEIVE_TASK_CNT = 13'b0000000000010,
+        INJECTOR_SEND_DESCRIPTOR  = 13'b0000000000100,
+        INJECTOR_MAP              = 13'b0000000001000,
+        INJECTOR_RECEIVE_TXT_SZ   = 13'b0000000010000,
+        INJECTOR_RECEIVE_DATA_SZ  = 13'b0000000100000,
+        INJECTOR_RECEIVE_BSS_SZ   = 13'b0000001000000,
+        INJECTOR_RECEIVE_ENTRY    = 13'b0000010000000,
+        INJECTOR_SEND_TASK        = 13'b0000100000000,
+        INJECTOR_NEXT_TASK        = 13'b0001000000000,
+        INJECTOR_WAIT_COMPLETE    = 13'b0010000000000,
+        INJECTOR_SEND_EOA         = 13'b0100000000000,
+        INJECTOR_FINISHED         = 13'b1000000000000
     } inject_fsm_t;
     inject_fsm_t inject_state;
 
@@ -127,7 +130,9 @@ module TaskInjector
             INJECTOR_IDLE:
                 inject_next_state = src_rx_i 
                     ? INJECTOR_RECEIVE_TASK_CNT 
-                    : INJECTOR_IDLE;
+                    : src_eoa_i
+                        ? INJECTOR_SEND_EOA
+                        : INJECTOR_IDLE;
             INJECTOR_RECEIVE_TASK_CNT:
                 inject_next_state = src_rx_i 
                     ? INJECTOR_SEND_DESCRIPTOR 
@@ -172,6 +177,12 @@ module TaskInjector
                 inject_next_state = (receive_state == RECEIVE_MAP_COMPLETE) 
                     ? INJECTOR_IDLE 
                     : INJECTOR_WAIT_COMPLETE;
+            INJECTOR_SEND_EOA:
+                inject_next_state = (send_state == SEND_FINISHED)
+                    ? INJECTOR_FINISHED
+                    : INJECTOR_SEND_EOA;
+            INJECTOR_FINISHED:
+                inject_next_state = INJECTOR_FINISHED;
             default:
                 inject_next_state = INJECTOR_IDLE;
         endcase
@@ -257,45 +268,7 @@ module TaskInjector
                 out_header[8] <= INJECTOR_ADDRESS;   /* Consumer address */
             end
             else begin
-                case (inject_state)
-                    INJECTOR_SEND_DESCRIPTOR: begin
-                        case (send_state)
-                            SEND_IDLE: begin
-                                /* DATA_AV for App descriptor */
-                                out_header    <= '0;
-                                out_header[0] <= {16'b0, mapper_address_i}; /* Target address   */
-                                out_header[1] <= HEADER_SIZE - 2;           /* Payload size     */
-                                out_header[2] <= DATA_AV;                   /* Service          */
-                                out_header[3] <= INJECTOR_ADDRESS;          /* Producer task    */
-                                out_header[4] <= '0;                        /* Consumer task    */
-                                out_header[8] <= INJECTOR_ADDRESS;          /* Producer address */
-                            end
-                            SEND_WAIT_REQUEST: begin
-                                /* DELIVERY for App descriptor */
-                                out_header    <= '0;
-                                out_header[0] <= in_header[8];                   /* Target address          */
-                                out_header[1] <= (                               /* Payload size            */
-                                    {22'b0, task_cnt, 1'b0}                      /* 2 flits per task        */
-                                    + {15'b0, graph_size}                        /* Graph size              */
-                                    + (HEADER_SIZE + 1)                          /* -2 + 2 (aux) + 1 (size) */
-                                );
-                                out_header[2] <= MESSAGE_DELIVERY;               /* Service        */
-                                out_header[3] <= in_header[3];                   /* Producer task  */
-                                out_header[4] <= in_header[4];                   /* Consumer task  */
-                                out_header[8] <= (
-                                    {
-                                        (
-                                            {20'b0, task_cnt, 1'b0} 
-                                            + {12'b0, graph_size}                /* Message length */
-                                            + 29'd3
-                                        ), 
-                                        2'b0
-                                    }
-                                );
-                            end
-                            default: ;
-                        endcase
-                    end
+                case (inject_state) /* Priority to send without protocol to allocate task */
                     INJECTOR_RECEIVE_TXT_SZ: begin
                         out_header     <= '0;
                         out_header[0]  <= (INJECT_MAPPER && task_cnt == '0) /* Target address */
@@ -321,7 +294,7 @@ module TaskInjector
                             out_header[1] <= out_header[1] + src_data_i;
                     end
                     INJECTOR_RECEIVE_BSS_SZ: begin
-                        out_header[11] <= src_data_i; /* BSS size */
+                        out_header[11] <= src_data_i; /* BSS size    */
 
                         if (src_rx_i) begin
                             /* Divide payload size by 4 */
@@ -337,10 +310,56 @@ module TaskInjector
                         if (src_rx_i)
                             out_header[1] <= out_header[1] + (HEADER_SIZE - 2);
                     end
+                    INJECTOR_SEND_DESCRIPTOR,
+                    INJECTOR_SEND_EOA:          begin  /* Messages following the MPI protocol */
+                        case (send_state)
+                            SEND_IDLE: begin
+                                /* DATA_AV to mapper task */
+                                out_header    <= '0;
+                                out_header[0] <= {16'b0, mapper_address_i}; /* Target address   */
+                                out_header[1] <= HEADER_SIZE - 2;           /* Payload size     */
+                                out_header[2] <= DATA_AV;                   /* Service          */
+                                out_header[3] <= INJECTOR_ADDRESS;          /* Producer task    */
+                                out_header[4] <= '0;                        /* Consumer task    */
+                                out_header[8] <= INJECTOR_ADDRESS;          /* Producer address */
+                            end
+                            SEND_WAIT_REQUEST: begin
+                                /* DELIVERY to mapper task */
+                                out_header    <= '0;
+                                out_header[0] <= in_header[8];      /* Target address */
+                                out_header[2] <= MESSAGE_DELIVERY;  /* Service        */
+                                out_header[3] <= in_header[3];      /* Producer task  */
+                                out_header[4] <= in_header[4];      /* Consumer task  */
+
+                                if (inject_state == INJECTOR_SEND_DESCRIPTOR) begin
+                                    out_header[1] <= (                  /* Payload size            */
+                                        {22'b0, task_cnt, 1'b0}         /* 2 flits per task        */
+                                        + {15'b0, graph_size}           /* Graph size              */
+                                        + (HEADER_SIZE + 1)             /* -2 + 2 (aux) + 1 (size) */
+                                    );
+                                    out_header[8] <= (
+                                        {
+                                            (
+                                                {20'b0, task_cnt, 1'b0} 
+                                                + {12'b0, graph_size}   /* Message length          */
+                                                + 29'd3
+                                            ), 
+                                            2'b0
+                                        }
+                                    );
+                                end
+                                else if (inject_state == INJECTOR_SEND_EOA) begin
+                                    out_header[1] <= (HEADER_SIZE - 1); /* Payload size   */
+                                    out_header[8] <= 32'd4;             /* Message length */
+                                end
+                            end
+                            default: ;
+                        endcase
+                    end
                     default: ;
                 endcase
             end
-        end            
+        end
     end
 
     logic [(FLIT_SIZE - 1):0] out_sent_cnt;
@@ -368,7 +387,8 @@ module TaskInjector
                 end
                 else begin
                     case (inject_state)
-                        INJECTOR_SEND_DESCRIPTOR: 
+                        INJECTOR_SEND_DESCRIPTOR,
+                        INJECTOR_SEND_EOA: 
                             send_next_state = SEND_DATA_AV;
                         INJECTOR_SEND_TASK:
                             send_next_state = SEND_PACKET;
@@ -415,6 +435,13 @@ module TaskInjector
                         aux_header      <= '0;
                         aux_header[0]   <= NEW_APP;
                         aux_header[1]   <= INJECTOR_ADDRESS;
+                    end
+                end
+                INJECTOR_SEND_EOA: begin
+                    if (send_state == SEND_WAIT_REQUEST) begin
+                        aux_header_size <= 2'd1;
+                        aux_header      <= '0;
+                        aux_header[0]   <= EOA;
                     end
                 end
                 default: aux_header_size <= '0;
