@@ -1,7 +1,9 @@
 module TaskParser
 #(
-    parameter FLIT_SIZE = 32,
-    parameter string START_FILE = "app_start.txt"
+    parameter FLIT_SIZE         = 32,
+    parameter INJECT_MAPPER     = 0,
+    parameter string START_FILE = "app_start.txt",
+    parameter string APP_PATH   = "applications"
 )
 (
     input  logic                     clk_i,
@@ -10,7 +12,8 @@ module TaskParser
     output logic                     eoa_o,
     output logic                     tx_o,
     input  logic                     credit_i,
-    output logic [(FLIT_SIZE - 1):0] data_o
+    output logic [(FLIT_SIZE - 1):0] data_o,
+    output logic [15:0]              mapper_address_o
 );
 
     int app_start_fd;
@@ -18,7 +21,7 @@ module TaskParser
     initial begin
         app_start_fd = $fopen(START_FILE, "r");
         if (app_start_fd == '0) begin
-            $display("[TaskParser] Could not open %s.txt", START_FILE);
+            $display("[%7.3f] [TaskParser] Could not open %s", $time()/1_000_000.0, START_FILE);
             $finish();
         end
     end
@@ -27,6 +30,7 @@ module TaskParser
     int unsigned     map_ttt_size;
     int unsigned     descr_size;
     int unsigned     binary_size;
+    string           task_name;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -61,9 +65,9 @@ module TaskParser
             LOAD_NEXT_APP:
                 next_state = LOAD_CHECK_EOF;
             LOAD_CHECK_EOF:
-                next_state = $feof(app_start_fd) ? LOAD_EOA : LOAD_APP;
+                next_state = $feof(app_start_fd) ? LOAD_EOA  : LOAD_APP;
             LOAD_APP:
-                next_state = WAIT_START_TIME;
+                next_state = INJECT_MAPPER       ? LOAD_TASK : WAIT_START_TIME;
             WAIT_START_TIME:
                 next_state = can_start ? INJECT_DESCR_SIZE : WAIT_START_TIME;
             INJECT_DESCR_SIZE:
@@ -79,9 +83,11 @@ module TaskParser
                         ? INJECT_GRAPH
                         : INJECT_MAP;
             INJECT_GRAPH:
-                next_state = (credit_i && descr_size == '0)
-                    ? LOAD_TASK
-                    : INJECT_GRAPH;
+                next_state = !(credit_i && descr_size == '0)
+                    ? INJECT_GRAPH
+                    : (app_task_cnt != '0)
+                        ? LOAD_TASK
+                        : LOAD_EOA;
             LOAD_TASK:
                 next_state = INJECT_TEXT;
             INJECT_TEXT:
@@ -99,7 +105,11 @@ module TaskParser
             LOAD_FINISH:
                 next_state = LOAD_NEXT_TASK;
             LOAD_NEXT_TASK:
-                next_state = (app_task_cnt == '0) ? LOAD_NEXT_APP : LOAD_TASK;
+                next_state = (INJECT_MAPPER && task_name == "mapper_task")
+                    ? INJECT_DESCR_SIZE
+                    : (app_task_cnt == '0) 
+                        ? LOAD_NEXT_APP 
+                        : LOAD_TASK;
             LOAD_EOA:
                 next_state = LOAD_EOA;
         endcase
@@ -107,7 +117,7 @@ module TaskParser
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni)
-            state <= LOAD_NEXT_APP;
+            state <= INJECT_MAPPER ? LOAD_APP : LOAD_NEXT_APP;
         else
             state <= next_state;
     end
@@ -118,31 +128,32 @@ module TaskParser
     longint unsigned start_time;
     int              app_descr_fd;
     int              mapping;
-    int              graph;
-    string           task_name;
+    int              app_graph;
     int              task_descr_fd;
     int unsigned     text_size;
     int unsigned     data_size;
     int unsigned     bss_size;
     int unsigned     entry_point;
     logic [31:0]     binary;
+    logic [31:0]     ma_ttt;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             /* verilator lint_off BLKSEQ */
-            app_name      = "";
-            start_time    = '0;
-            descr_size    = '0;
-            app_task_cnt  = '0;
-            app_descr_fd  = '0;
-            mapping       = '0;
-            graph         = '0;
-            task_name     = "";
-            task_descr_fd = '0;
-            text_size     = '0;
-            data_size     = '0;
-            bss_size      = '0;
-            entry_point   = '0;
-            binary        = '0;
+            app_name         = INJECT_MAPPER ? "ma" : "";
+            start_time       = '0;
+            descr_size       = '0;
+            app_task_cnt     = '0;
+            app_descr_fd     = '0;
+            mapping          = '0;
+            app_graph        = '0;
+            task_name        = "";
+            task_descr_fd    = '0;
+            text_size        = '0;
+            data_size        = '0;
+            bss_size         = '0;
+            entry_point      = '0;
+            binary           = '0;
+            mapper_address_o = '1;
             /* verilator lint_on BLKSEQ */  
             map_ttt_size <= '0;
             binary_size  <= '0;
@@ -150,22 +161,44 @@ module TaskParser
         else begin
             case (state)
                 LOAD_NEXT_APP: begin
-                    $fscanf(app_start_fd, "%s\n",   app_name);
+                    $fscanf(app_start_fd, "%s\n", app_name);
                 end
                 LOAD_APP: begin
-                    $fscanf(app_start_fd, "%d",   start_time);
-                    $fscanf(app_start_fd, "%d",   descr_size);
+                    if (!INJECT_MAPPER) begin
+                        $fscanf(app_start_fd, "%d", start_time);
+                        $fscanf(app_start_fd, "%d", descr_size);
+                    end
+                    
                     $fscanf(app_start_fd, "%d", app_task_cnt);
-                    $fscanf(app_start_fd, "%x",      mapping);
+                    map_ttt_size <= app_task_cnt;
+
+                    if (!INJECT_MAPPER) begin
+                        $fscanf(app_start_fd, "%x", mapping);
+                    end
+                    else begin
+                        if (app_task_cnt < 1) begin
+                            $display("[%7.3f] [TaskParser] MA should have at least 1 task", $time()/1_000_000.0);
+                            $finish();
+                        end
+
+                        $fscanf(app_start_fd, "%x", mapper_address_o);
+                        if (mapper_address_o == '1) begin
+                            $display("[%7.3f] [TaskParser] mapper_task should be statically mapped", $time()/1_000_000.0);
+                            $finish();
+                        end
+
+                        descr_size   = app_task_cnt;
+                        mapping      = {16'd0, mapper_address_o};
+                        app_graph        = '0;
+                    end
+
                     /* verilator lint_off BLKSEQ */
-                    app_descr_fd = $fopen($sformatf("applications/%s.txt", app_name), "r");
+                    app_descr_fd = $fopen($sformatf("%s/%s.txt", APP_PATH, app_name), "r");
                     /* verilator lint_on BLKSEQ */
                     if (app_descr_fd == '0) begin
-                        $display("[TaskParser] Could not open applications/%s.txt", app_name);
+                        $display("[%7.3f] [TaskParser] Could not open %s/%s.txt", $time()/1_000_000.0, APP_PATH, app_name);
                         $finish();
                     end
-                    $fscanf(app_descr_fd, "%d",        graph);
-                    map_ttt_size <= app_task_cnt;
                 end
                 INJECT_DESCR_SIZE: begin
                     if (credit_i) begin
@@ -176,38 +209,55 @@ module TaskParser
                     end
                 end
                 INJECT_MAP: begin
-                    if (credit_i)
+                    if (credit_i) begin
                         map_ttt_size <= map_ttt_size - 1'b1;
+                        if (INJECT_MAPPER)
+                            $fscanf(app_start_fd, "%x", ma_ttt);
+                    end
                 end
                 INJECT_TTT: begin
-                    if (credit_i)
+                    if (credit_i) begin
                         $fscanf(app_start_fd, "%x", mapping);
+                        if (!INJECT_MAPPER && map_ttt_size == '0)
+                            $fscanf(app_descr_fd, "%d", app_graph);
+                    end
                 end
                 INJECT_GRAPH: begin
                     if (credit_i) begin
-                        $fscanf(app_descr_fd, "%d",        graph);
                         /* verilator lint_off BLKSEQ */
                         descr_size = descr_size - 1'b1;
                         /* verilator lint_on BLKSEQ */
+                        if (!INJECT_MAPPER)
+                            $fscanf(app_descr_fd, "%d", app_graph);
                     end
                 end
                 LOAD_TASK: begin
-                    $display("[%7.3f] [AppParser] Injection of %s descriptor finished", $time()/1_000_000.0, app_name);
+                    // $display("[%7.3f] [TaskParser] Injection of %s descriptor finished", $time()/1_000_000.0, app_name);
+
                     $fscanf(app_descr_fd, "%s\n", task_name);
+
+                    if (INJECT_MAPPER) begin
+                        if (app_descr_fd == '0 && task_name != "mapper_task") begin
+                            $display("[%7.3f] [TaskParser] First MA task should be mapper_task. Found: %s", $time()/1_000_000.0, task_name);
+                            $finish();
+                        end
+                    end
+
                     /* verilator lint_off BLKSEQ */
-                    task_descr_fd = $fopen($sformatf("applications/%s/%s.txt", app_name, task_name), "r");
-                    /* verilator lint_on BLKSEQ */
+                    task_descr_fd = $fopen($sformatf("%s/%s/%s.txt", APP_PATH, app_name, task_name), "r");
+                    /* verilator lint_on BLKSEQ */  
                     if (task_descr_fd == '0) begin
-                        $display("[TaskParser] Could not open applications/%s/%s.txt", app_name, task_name);
+                        $display("[%7.3f] [TaskParser] Could not open %s/%s/%s.txt", $time()/1_000_000.0, APP_PATH, app_name, task_name);
                         $finish();
                     end
+
                     $fscanf(task_descr_fd, "%x",   text_size);
                     $fscanf(task_descr_fd, "%x",   data_size);
                     $fscanf(task_descr_fd, "%x",    bss_size);
                     $fscanf(task_descr_fd, "%x", entry_point);
                     $fscanf(task_descr_fd, "%x",      binary);
                     binary_size <= ((text_size + data_size) / 4) - 1; /* Convert to 32-bit */
-                    $display("[%7.3f] [AppParser] Injecting task %s", $time()/1_000_000.0, task_name);
+                    $display("[%7.3f] [TaskParser] Injecting task %s", $time()/1_000_000.0, task_name);
                 end
                 INJECT_BINARY: begin
                     if (credit_i) begin
@@ -216,7 +266,7 @@ module TaskParser
                     end
                 end
                 LOAD_FINISH: begin
-                    $display("[%7.3f] [AppParser] Injection of %s finished", $time()/1_000_000.0, task_name);
+                    $display("[%7.3f] [TaskParser] Injection of %s finished", $time()/1_000_000.0, task_name);
                     $fclose(task_descr_fd);
                     /* verilator lint_off BLKSEQ */
                     app_task_cnt = app_task_cnt - 1'b1;
@@ -234,12 +284,18 @@ module TaskParser
 
     assign can_start = (($time() / 1_000_000 ) >= start_time);
 
+    logic [31:0] ttt;
+    assign ttt   = INJECT_MAPPER  ? ma_ttt    : '1;
+
+    logic [31:0] graph;
+    assign graph = !INJECT_MAPPER ? app_graph : '0;
+
     always_comb begin
         case (state)
             INJECT_DESCR_SIZE: data_o = descr_size;
-            INJECT_TASK_CNT:   data_o = app_task_cnt;
+            INJECT_TASK_CNT:   data_o = map_ttt_size;
             INJECT_MAP:        data_o = mapping;
-            INJECT_TTT:        data_o = FLIT_SIZE'('1); // -1
+            INJECT_TTT:        data_o = ttt;
             INJECT_GRAPH:      data_o = graph;
             INJECT_TEXT:       data_o = text_size;
             INJECT_DATA:       data_o = data_size;
@@ -253,7 +309,7 @@ module TaskParser
 
 ////////////////////////////////////////////////////////////////////////////////
 
-    assign eoa_o = (state == LOAD_EOA);
+    assign eoa_o = (!INJECT_MAPPER && state == LOAD_EOA);
 
     assign tx_o = state inside {
         INJECT_DESCR_SIZE,
