@@ -187,9 +187,11 @@ module TaskParser
                             $finish();
                         end
 
+                        /* verilator lint_off BLKSEQ */
                         descr_size   = app_task_cnt;
                         mapping      = {16'd0, mapper_address_o};
-                        app_graph        = '0;
+                        app_graph    = '0;
+                        /* verilator lint_on BLKSEQ */
                     end
 
                     /* verilator lint_off BLKSEQ */
