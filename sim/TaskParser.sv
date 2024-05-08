@@ -219,8 +219,9 @@ module TaskParser
                 end
                 INJECT_TTT: begin
                     if (credit_i) begin
-                        $fscanf(app_start_fd, "%x", mapping);
-                        if (!INJECT_MAPPER && map_ttt_size == '0)
+                        if (map_ttt_size != '0)
+                            $fscanf(app_start_fd, "%x", mapping);
+                        else if (!INJECT_MAPPER)
                             $fscanf(app_descr_fd, "%d", app_graph);
                     end
                 end
