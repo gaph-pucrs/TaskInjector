@@ -153,10 +153,10 @@ module TaskParser
             bss_size         = '0;
             entry_point      = '0;
             binary           = '0;
-            mapper_address_o = '1;
             /* verilator lint_on BLKSEQ */  
-            map_ttt_size <= '0;
-            binary_size  <= '0;
+            mapper_address_o <= '1;
+            map_ttt_size     <= '0;
+            binary_size      <= '0;
         end
         else begin
             case (state)
@@ -164,36 +164,6 @@ module TaskParser
                     $fscanf(app_start_fd, "%s\n", app_name);
                 end
                 LOAD_APP: begin
-                    if (!INJECT_MAPPER) begin
-                        $fscanf(app_start_fd, "%d", start_time);
-                        $fscanf(app_start_fd, "%d", descr_size);
-                    end
-                    
-                    $fscanf(app_start_fd, "%d", app_task_cnt);
-                    map_ttt_size <= app_task_cnt;
-
-                    if (!INJECT_MAPPER) begin
-                        $fscanf(app_start_fd, "%x", mapping);
-                    end
-                    else begin
-                        if (app_task_cnt < 1) begin
-                            $display("[%7.3f] [TaskParser] MA should have at least 1 task", $time()/1_000_000.0);
-                            $finish();
-                        end
-
-                        $fscanf(app_start_fd, "%x", mapper_address_o);
-                        if (mapper_address_o == '1) begin
-                            $display("[%7.3f] [TaskParser] mapper_task should be statically mapped", $time()/1_000_000.0);
-                            $finish();
-                        end
-
-                        /* verilator lint_off BLKSEQ */
-                        descr_size   = app_task_cnt;
-                        mapping      = {16'd0, mapper_address_o};
-                        app_graph    = '0;
-                        /* verilator lint_on BLKSEQ */
-                    end
-
                     /* verilator lint_off BLKSEQ */
                     app_descr_fd = $fopen($sformatf("%s/%s.txt", APP_PATH, app_name), "r");
                     /* verilator lint_on BLKSEQ */
@@ -201,6 +171,37 @@ module TaskParser
                         $display("[%7.3f] [TaskParser] Could not open %s/%s.txt", $time()/1_000_000.0, APP_PATH, app_name);
                         $finish();
                     end
+
+                    if (!INJECT_MAPPER) begin
+                        $fscanf(app_start_fd, "%d", start_time);
+                        $fscanf(app_descr_fd, "%d", app_task_cnt);
+                        $fscanf(app_descr_fd, "%d", descr_size);
+                    end
+                    else begin
+                        $fscanf(app_start_fd, "%d", app_task_cnt);
+                        if (app_task_cnt < 1) begin
+                            $display("[%7.3f] [TaskParser] MA should have at least 1 task", $time()/1_000_000.0);
+                            $finish();
+                        end
+
+                        /* verilator lint_off BLKSEQ */
+                        descr_size   = app_task_cnt;
+                        app_graph = '0;
+                        /* verilator lint_on BLKSEQ */
+                    end
+
+                    $fscanf(app_start_fd, "%x", mapping);
+
+                    if (INJECT_MAPPER) begin
+                        if (mapping == '1) begin
+                            $display("[%7.3f] [TaskParser] mapper_task should be statically mapped", $time()/1_000_000.0);
+                            $finish();
+                        end
+
+                        mapper_address_o <= mapping[15:0];
+                    end
+                    
+                    map_ttt_size <= app_task_cnt;
                 end
                 INJECT_DESCR_SIZE: begin
                     if (credit_i) begin
