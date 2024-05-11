@@ -3,7 +3,7 @@ module TaskParser
     parameter FLIT_SIZE         = 32,
     parameter INJECT_MAPPER     = 0,
     parameter string START_FILE = "app_start.txt",
-    parameter string APP_PATH   = "applications"
+    parameter string APP_PATH   = "../applications"
 )
 (
     input  logic                     clk_i,
@@ -136,10 +136,11 @@ module TaskParser
     int unsigned     entry_point;
     logic [31:0]     binary;
     logic [31:0]     ma_ttt;
+    string           descr_path;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             /* verilator lint_off BLKSEQ */
-            app_name         = INJECT_MAPPER ? "ma" : "";
+            app_name         = "";
             start_time       = '0;
             descr_size       = '0;
             app_task_cnt     = '0;
@@ -153,6 +154,7 @@ module TaskParser
             bss_size         = '0;
             entry_point      = '0;
             binary           = '0;
+            descr_path       = "";
             /* verilator lint_on BLKSEQ */  
             mapper_address_o <= '1;
             map_ttt_size     <= '0;
@@ -165,10 +167,15 @@ module TaskParser
                 end
                 LOAD_APP: begin
                     /* verilator lint_off BLKSEQ */
-                    app_descr_fd = $fopen($sformatf("%s/%s.txt", APP_PATH, app_name), "r");
+                    if (!INJECT_MAPPER)
+                        descr_path = $sformatf("%s/%s.txt", APP_PATH, app_name);
+                    else
+                        descr_path = $sformatf("ma_tasks.txt");
+                    app_descr_fd = $fopen(descr_path, "r");
                     /* verilator lint_on BLKSEQ */
+                    
                     if (app_descr_fd == '0) begin
-                        $display("[%7.3f] [TaskParser] Could not open %s/%s.txt", $time()/1_000_000.0, APP_PATH, app_name);
+                        $display("[%7.3f] [TaskParser] Could not open %s", $time()/1_000_000.0, descr_path);
                         $finish();
                     end
 
@@ -194,7 +201,7 @@ module TaskParser
 
                     if (INJECT_MAPPER) begin
                         if (mapping == '1) begin
-                            $display("[%7.3f] [TaskParser] mapper_task should be statically mapped", $time()/1_000_000.0);
+                            $display("[%7.3f] [TaskParser] MA tasks should be statically mapped", $time()/1_000_000.0);
                             $finish();
                         end
 
@@ -241,7 +248,10 @@ module TaskParser
                     $fscanf(app_descr_fd, "%s\n", task_name);
 
                     if (INJECT_MAPPER) begin
-                        if (app_descr_fd == '0 && task_name != "mapper_task") begin
+                        /* verilator lint_off BLKSEQ */
+                        app_name = task_name;
+                        /* verilator lint_on BLKSEQ */
+                        if (task_descr_fd == '0 && task_name != "mapper_task") begin
                             $display("[%7.3f] [TaskParser] First MA task should be mapper_task. Found: %s", $time()/1_000_000.0, task_name);
                             $finish();
                         end
