@@ -1,3 +1,16 @@
+/**
+ * TaskInjector
+ * @file TaskParser.sv
+ *
+ * @author Angelo Elias Dal Zotto (angelo.dalzotto@edu.pucrs.br)
+ * GAPH - Hardware Design Support Group (https://corfu.pucrs.br)
+ * PUCRS - Pontifical Catholic University of Rio Grande do Sul (http://pucrs.br/)
+ *
+ * @date May 2024
+ *
+ * @brief File parser that injects data into Task Injector
+ */
+
 module TaskParser
 #(
     parameter FLIT_SIZE         = 32,
