@@ -33,11 +33,13 @@ module TaskInjector
 
     /* NoC Output */
     output logic                     noc_tx_o,
+    output logic                     noc_eop_o,
     input  logic                     noc_credit_i,
     output logic [(FLIT_SIZE - 1):0] noc_data_o,
 
     /* NoC Input */
     input  logic                     noc_rx_i,
+    input  logic                     noc_eop_i,
     output logic                     noc_credit_o,
     input  logic [(FLIT_SIZE - 1):0] noc_data_i
 );
@@ -72,22 +74,21 @@ module TaskInjector
     send_fsm_t send_state;
 
     /* Signals below should have 1 bit more to hold 'size' and not just max value */
-    logic [($clog2(HEADER_SIZE)):0]         out_header_idx;
+    logic [($clog2(HEADER_SIZE)):0]             out_header_idx;
     logic [($clog2(MAX_AUX_HEADER_SIZE+1)-1):0] aux_header_idx;
     logic [($clog2(MAX_AUX_HEADER_SIZE+1)-1):0] aux_header_size;
 
-    typedef enum logic [10:0] {
-        RECEIVE_IDLE         = 11'b00000000001,
-        RECEIVE_HEADER       = 11'b00000000010,
-        RECEIVE_SIZE         = 11'b00000000100,
-        RECEIVE_PACKET       = 11'b00000001000,
-        RECEIVE_SERVICE      = 11'b00000010000,
-        RECEIVE_DELIVERY     = 11'b00000100000,
-        RECEIVE_DROP         = 11'b00001000000,
-        RECEIVE_WAIT_REQ     = 11'b00010000000,
-        RECEIVE_WAIT_DLVR    = 11'b00100000000,
-        RECEIVE_WAIT_ALLOC   = 11'b01000000000,
-        RECEIVE_MAP_COMPLETE = 11'b10000000000 
+    typedef enum logic [9:0] {
+        RECEIVE_IDLE         = 10'b0000000001,
+        RECEIVE_HEADER       = 10'b0000000010,
+        RECEIVE_PACKET       = 10'b0000000100,
+        RECEIVE_SERVICE      = 10'b0000001000,
+        RECEIVE_DELIVERY     = 10'b0000010000,
+        RECEIVE_DROP         = 10'b0000100000,
+        RECEIVE_WAIT_REQ     = 10'b0001000000,
+        RECEIVE_WAIT_DLVR    = 10'b0010000000,
+        RECEIVE_WAIT_ALLOC   = 10'b0100000000,
+        RECEIVE_MAP_COMPLETE = 10'b1000000000 
     } receive_fsm_t;
     receive_fsm_t receive_state;
 
@@ -389,7 +390,8 @@ module TaskInjector
     end
 
     logic sent;
-    assign sent = noc_credit_i && (out_sent_cnt == out_header[1] + 1'b1);
+    assign sent      = noc_credit_i && (out_sent_cnt == out_header[1] + 1'b1);
+    assign noc_eop_o = sent;
 
     send_fsm_t send_next_state;
     always_comb begin
@@ -490,22 +492,6 @@ module TaskInjector
 // Receive control
 ////////////////////////////////////////////////////////////////////////////////
 
-    logic [(FLIT_SIZE - 1):0] receive_cntr;
-    always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni) begin
-            receive_cntr <= '0;
-        end
-        else begin
-            if (receive_state == RECEIVE_SIZE)
-                receive_cntr <= '0;
-            else if (
-                noc_rx_i 
-                && (receive_state inside {RECEIVE_PACKET, RECEIVE_DROP})
-            )
-                receive_cntr <= receive_cntr + 1'b1;
-        end
-    end
-
     logic [($clog2(HEADER_SIZE)):0] in_header_idx;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
@@ -570,16 +556,12 @@ module TaskInjector
                 end
             end
             RECEIVE_HEADER:
-                receive_next_state = noc_rx_i ? RECEIVE_SIZE : RECEIVE_HEADER;
-            RECEIVE_SIZE:
-                receive_next_state = noc_rx_i ? RECEIVE_PACKET : RECEIVE_SIZE;
+                receive_next_state = noc_rx_i ? RECEIVE_PACKET : RECEIVE_HEADER;
             RECEIVE_PACKET: begin
                 if (noc_rx_i) begin
-                    if (receive_cntr == in_header[1] - 1'b1)
+                    if (noc_eop_i)
                         receive_next_state = RECEIVE_SERVICE;
-                    else if (
-                        receive_cntr == MAX_PAYLOAD_SIZE + HEADER_SIZE - 3
-                    )
+                    else if (in_payload_idx == MAX_PAYLOAD_SIZE - 1)
                         receive_next_state = RECEIVE_DROP;
                     else
                         receive_next_state = RECEIVE_PACKET;
@@ -607,7 +589,7 @@ module TaskInjector
                 endcase
             end
             RECEIVE_DROP:
-                receive_next_state = (receive_cntr == in_header[1] - 1'b1) 
+                receive_next_state = (noc_eop_i) 
                     ? RECEIVE_IDLE 
                     : RECEIVE_DROP;
             RECEIVE_WAIT_REQ:
@@ -639,7 +621,6 @@ module TaskInjector
     assign noc_credit_o = (
         receive_state inside {
             RECEIVE_HEADER, 
-            RECEIVE_SIZE, 
             RECEIVE_PACKET, 
             RECEIVE_DROP
         }
