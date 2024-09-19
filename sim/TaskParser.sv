@@ -53,8 +53,8 @@ module TaskParser
         LOAD_CHECK_EOF,
         LOAD_APP,
         WAIT_START_TIME,
-        INJECT_APP_NAME_HASH,
         INJECT_DESCR_SIZE,
+        INJECT_APP_NAME_HASH,
         INJECT_TASK_CNT,
         INJECT_MAP,
         INJECT_TTT,
@@ -80,19 +80,19 @@ module TaskParser
             LOAD_NEXT_APP:
                 next_state = LOAD_CHECK_EOF;
             LOAD_CHECK_EOF:
-                next_state = $feof(app_start_fd) ? LOAD_EOA  : LOAD_APP;
+                next_state = $feof(app_start_fd) ? LOAD_EOA   : LOAD_APP;
             LOAD_APP:
-                next_state = INJECT_MAPPER       ? LOAD_TASK : WAIT_START_TIME;
+                next_state = INJECT_MAPPER       ? LOAD_TASK  : WAIT_START_TIME;
             WAIT_START_TIME:
-                next_state = can_start ? INJECT_DESCR_SIZE : WAIT_START_TIME;
-            INJECT_APP_NAME_HASH:
-                next_state = credit_i  ? INJECT_DESCR_SIZE : INJECT_APP_NAME_HASH;
+                next_state = can_start ? INJECT_DESCR_SIZE    : WAIT_START_TIME;
             INJECT_DESCR_SIZE:
-                next_state = credit_i  ? INJECT_TASK_CNT   : INJECT_DESCR_SIZE;
+                next_state = credit_i  ? INJECT_APP_NAME_HASH : INJECT_DESCR_SIZE;
+            INJECT_APP_NAME_HASH:
+                next_state = credit_i  ? INJECT_TASK_CNT      : INJECT_APP_NAME_HASH;
             INJECT_TASK_CNT:
-                next_state = credit_i  ? INJECT_MAP        : INJECT_TASK_CNT;
+                next_state = credit_i  ? INJECT_MAP           : INJECT_TASK_CNT;
             INJECT_MAP:
-                next_state = credit_i  ? INJECT_TTT        : INJECT_MAP;
+                next_state = credit_i  ? INJECT_TTT           : INJECT_MAP;
             INJECT_TTT:
                 next_state = !credit_i
                     ? INJECT_TTT
@@ -232,11 +232,14 @@ module TaskParser
                 end
                 INJECT_DESCR_SIZE: begin
                     if (credit_i) begin
-                        $display("HASH %x", app_name_hash);
-                        $display("[%7.3f] [TaskParser] Injecting %s descriptor", $time()/1_000_000.0, app_name);
                         /* verilator lint_off BLKSEQ */
                         descr_size = descr_size - 1'b1;
                         /* verilator lint_on BLKSEQ  */
+                    end
+                end
+                INJECT_APP_NAME_HASH: begin
+                    if (credit_i) begin
+                        $display("[%7.3f] [TaskParser] Injecting %s descriptor", $time()/1_000_000.0, app_name);
                     end
                 end
                 INJECT_MAP: begin
@@ -327,8 +330,8 @@ module TaskParser
 
     always_comb begin
         case (state)
-            INJECT_APP_NAME_HASH: data_o = app_name_hash;
             INJECT_DESCR_SIZE:    data_o = descr_size;
+            INJECT_APP_NAME_HASH: data_o = app_name_hash;
             INJECT_TASK_CNT:      data_o = map_ttt_size;
             INJECT_MAP:           data_o = mapping;
             INJECT_TTT:           data_o = ttt;
@@ -348,8 +351,8 @@ module TaskParser
     assign eoa_o = (!INJECT_MAPPER && state == LOAD_EOA);
 
     assign tx_o = state inside {
-        INJECT_APP_NAME_HASH,
         INJECT_DESCR_SIZE,
+        INJECT_APP_NAME_HASH,
         INJECT_TASK_CNT,
         INJECT_MAP,
         INJECT_TTT,
