@@ -39,6 +39,7 @@ module TaskParser
         end
     end
 
+    int unsigned     app_name_hash;
     int unsigned     app_task_cnt;
     int unsigned     map_ttt_size;
     int unsigned     descr_size;
@@ -52,6 +53,7 @@ module TaskParser
         LOAD_CHECK_EOF,
         LOAD_APP,
         WAIT_START_TIME,
+        INJECT_APP_NAME_HASH,
         INJECT_DESCR_SIZE,
         INJECT_TASK_CNT,
         INJECT_MAP,
@@ -83,6 +85,8 @@ module TaskParser
                 next_state = INJECT_MAPPER       ? LOAD_TASK : WAIT_START_TIME;
             WAIT_START_TIME:
                 next_state = can_start ? INJECT_DESCR_SIZE : WAIT_START_TIME;
+            INJECT_APP_NAME_HASH:
+                next_state = credit_i  ? INJECT_DESCR_SIZE : INJECT_APP_NAME_HASH;
             INJECT_DESCR_SIZE:
                 next_state = credit_i  ? INJECT_TASK_CNT   : INJECT_DESCR_SIZE;
             INJECT_TASK_CNT:
@@ -153,9 +157,10 @@ module TaskParser
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             /* verilator lint_off BLKSEQ */
-            app_name         = "";
+            app_name         = "management";
             start_time       = '0;
             descr_size       = '0;
+            app_name_hash    = '0;
             app_task_cnt     = '0;
             app_descr_fd     = '0;
             mapping          = '0;
@@ -194,6 +199,7 @@ module TaskParser
 
                     if (!INJECT_MAPPER) begin
                         $fscanf(app_start_fd, "%d", start_time);
+                        $fscanf(app_descr_fd, "%x", app_name_hash);
                         $fscanf(app_descr_fd, "%d", app_task_cnt);
                         $fscanf(app_descr_fd, "%d", descr_size);
                     end
@@ -205,8 +211,9 @@ module TaskParser
                         end
 
                         /* verilator lint_off BLKSEQ */
-                        descr_size   = app_task_cnt;
-                        app_graph = '0;
+                        app_name_hash = 32'hd5dcc234; /* 32-bit blake2s for "management" */
+                        descr_size    = app_task_cnt;
+                        app_graph     = '0;
                         /* verilator lint_on BLKSEQ */
                     end
 
@@ -225,6 +232,7 @@ module TaskParser
                 end
                 INJECT_DESCR_SIZE: begin
                     if (credit_i) begin
+                        $display("HASH %x", app_name_hash);
                         $display("[%7.3f] [TaskParser] Injecting %s descriptor", $time()/1_000_000.0, app_name);
                         /* verilator lint_off BLKSEQ */
                         descr_size = descr_size - 1'b1;
@@ -319,17 +327,18 @@ module TaskParser
 
     always_comb begin
         case (state)
-            INJECT_DESCR_SIZE: data_o = descr_size;
-            INJECT_TASK_CNT:   data_o = map_ttt_size;
-            INJECT_MAP:        data_o = mapping;
-            INJECT_TTT:        data_o = ttt;
-            INJECT_GRAPH:      data_o = graph;
-            INJECT_TEXT:       data_o = text_size;
-            INJECT_DATA:       data_o = data_size;
-            INJECT_BSS:        data_o = bss_size;
-            INJECT_ENTRY:      data_o = entry_point;
-            INJECT_BINARY:     data_o = binary;
-            default:           data_o = '0;
+            INJECT_APP_NAME_HASH: data_o = app_name_hash;
+            INJECT_DESCR_SIZE:    data_o = descr_size;
+            INJECT_TASK_CNT:      data_o = map_ttt_size;
+            INJECT_MAP:           data_o = mapping;
+            INJECT_TTT:           data_o = ttt;
+            INJECT_GRAPH:         data_o = graph;
+            INJECT_TEXT:          data_o = text_size;
+            INJECT_DATA:          data_o = data_size;
+            INJECT_BSS:           data_o = bss_size;
+            INJECT_ENTRY:         data_o = entry_point;
+            INJECT_BINARY:        data_o = binary;
+            default:              data_o = '0;
         endcase
     end
 
@@ -339,6 +348,7 @@ module TaskParser
     assign eoa_o = (!INJECT_MAPPER && state == LOAD_EOA);
 
     assign tx_o = state inside {
+        INJECT_APP_NAME_HASH,
         INJECT_DESCR_SIZE,
         INJECT_TASK_CNT,
         INJECT_MAP,
