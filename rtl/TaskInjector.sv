@@ -46,20 +46,21 @@ module TaskInjector
 
     localparam MAX_AUX_HEADER_SIZE = 3;
 
-    typedef enum logic [12:0] {
-        INJECTOR_IDLE             = 13'b0000000000001,
-        INJECTOR_RECEIVE_TASK_CNT = 13'b0000000000010,
-        INJECTOR_SEND_DESCRIPTOR  = 13'b0000000000100,
-        INJECTOR_MAP              = 13'b0000000001000,
-        INJECTOR_RECEIVE_TXT_SZ   = 13'b0000000010000,
-        INJECTOR_RECEIVE_DATA_SZ  = 13'b0000000100000,
-        INJECTOR_RECEIVE_BSS_SZ   = 13'b0000001000000,
-        INJECTOR_RECEIVE_ENTRY    = 13'b0000010000000,
-        INJECTOR_SEND_TASK        = 13'b0000100000000,
-        INJECTOR_NEXT_TASK        = 13'b0001000000000,
-        INJECTOR_WAIT_COMPLETE    = 13'b0010000000000,
-        INJECTOR_SEND_EOA         = 13'b0100000000000,
-        INJECTOR_FINISHED         = 13'b1000000000000
+    typedef enum logic [13:0] {
+        INJECTOR_IDLE             = 14'b00000000000001,
+        INJECTOR_RECEIVE_APP_HASH = 14'b00000000000010,
+        INJECTOR_RECEIVE_TASK_CNT = 14'b00000000000100,
+        INJECTOR_SEND_DESCRIPTOR  = 14'b00000000001000,
+        INJECTOR_MAP              = 14'b00000000010000,
+        INJECTOR_RECEIVE_TXT_SZ   = 14'b00000000100000,
+        INJECTOR_RECEIVE_DATA_SZ  = 14'b00000001000000,
+        INJECTOR_RECEIVE_BSS_SZ   = 14'b00000010000000,
+        INJECTOR_RECEIVE_ENTRY    = 14'b00000100000000,
+        INJECTOR_SEND_TASK        = 14'b00001000000000,
+        INJECTOR_NEXT_TASK        = 14'b00010000000000,
+        INJECTOR_WAIT_COMPLETE    = 14'b00100000000000,
+        INJECTOR_SEND_EOA         = 14'b01000000000000,
+        INJECTOR_FINISHED         = 14'b10000000000000
     } inject_fsm_t;
     inject_fsm_t inject_state;
 
@@ -102,7 +103,8 @@ module TaskInjector
 ////////////////////////////////////////////////////////////////////////////////
 
     logic [16:0] graph_size;
-    logic [8:0] task_cnt;
+    logic [31:0] app_hash;
+    logic [ 8:0] task_cnt;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             graph_size <= '0;
@@ -111,6 +113,10 @@ module TaskInjector
         else if (src_rx_i) begin
             case (inject_state)
                 INJECTOR_IDLE:             graph_size <= src_data_i[16:0];
+                INJECTOR_RECEIVE_APP_HASH: begin
+                    $display("Hash %x", src_data_i);
+                    app_hash   <= src_data_i;
+                end
                 INJECTOR_RECEIVE_TASK_CNT: task_cnt   <= src_data_i[8:0];
                 default: ;
             endcase
@@ -135,10 +141,14 @@ module TaskInjector
         case (inject_state)
             INJECTOR_IDLE:
                 inject_next_state = src_rx_i 
-                    ? INJECTOR_RECEIVE_TASK_CNT 
+                    ? INJECTOR_RECEIVE_APP_HASH 
                     : src_eoa_i
                         ? INJECTOR_SEND_EOA
                         : INJECTOR_IDLE;
+            INJECTOR_RECEIVE_APP_HASH:
+                inject_next_state = src_rx_i 
+                    ? INJECTOR_RECEIVE_TASK_CNT 
+                    : INJECTOR_RECEIVE_APP_HASH;
             INJECTOR_RECEIVE_TASK_CNT:
                 inject_next_state = src_rx_i 
                     ? INJECTOR_SEND_DESCRIPTOR 
@@ -217,6 +227,7 @@ module TaskInjector
             src_credit_o = (
                 inject_state inside {
                     INJECTOR_IDLE,
+                    INJECTOR_RECEIVE_APP_HASH, 
                     INJECTOR_RECEIVE_TXT_SZ, 
                     INJECTOR_RECEIVE_DATA_SZ, 
                     INJECTOR_RECEIVE_BSS_SZ, 
@@ -442,7 +453,7 @@ module TaskInjector
                         aux_header      <= '0;
                         aux_header[0]   <= NEW_APP;
                         aux_header[1]   <= INJECTOR_ADDRESS;
-                        aux_header[2]   <= 32'hffffffff;
+                        aux_header[2]   <= app_hash;
                     end
                 end
                 INJECTOR_SEND_EOA: begin
