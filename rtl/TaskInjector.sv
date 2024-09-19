@@ -44,7 +44,7 @@ module TaskInjector
     input  logic [(FLIT_SIZE - 1):0] noc_data_i
 );
 
-    localparam MAX_AUX_HEADER_SIZE = 2;
+    localparam MAX_AUX_HEADER_SIZE = 3;
 
     typedef enum logic [12:0] {
         INJECTOR_IDLE             = 13'b0000000000001,
@@ -349,14 +349,14 @@ module TaskInjector
                                     out_header[1] <= (                  /* Payload size            */
                                         {22'b0, task_cnt, 1'b0}         /* 2 flits per task        */
                                         + {15'b0, graph_size}           /* Graph size              */
-                                        + (HEADER_SIZE + 1)             /* -2 + 2 (aux) + 1 (size) */
+                                        + (HEADER_SIZE + 2)             /* -2 + 3 (aux) + 1 (size) */
                                     );
                                     out_header[8] <= (
                                         {
                                             (
                                                 {20'b0, task_cnt, 1'b0} 
                                                 + {12'b0, graph_size}   /* Message length          */
-                                                + 29'd3
+                                                + 29'd4
                                             ), 
                                             2'b0
                                         }
@@ -446,10 +446,11 @@ module TaskInjector
             case (inject_state)
                 INJECTOR_SEND_DESCRIPTOR: begin
                     if (send_state == SEND_WAIT_REQUEST) begin
-                        aux_header_size <= 2'd2;
+                        aux_header_size <= 2'd3;
                         aux_header      <= '0;
                         aux_header[0]   <= NEW_APP;
                         aux_header[1]   <= INJECTOR_ADDRESS;
+                        aux_header[2]   <= 32'hffffffff;
                     end
                 end
                 INJECTOR_SEND_EOA: begin
