@@ -101,25 +101,17 @@ module TaskInjector
 // Injector
 ////////////////////////////////////////////////////////////////////////////////
 
+    logic [16:0] graph_size;
     logic [8:0] task_cnt;
     always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni)
-            task_cnt <= '0;
-        else begin
-            case (inject_state)
-                INJECTOR_RECEIVE_TASK_CNT: task_cnt <= src_data_i[8:0];
-                default: ;
-            endcase
-        end
-    end
-
-    logic [16:0] graph_size;
-    always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni)
+        if (!rst_ni) begin
             graph_size <= '0;
-        else begin
+            task_cnt   <= '0;
+        end
+        else if (src_rx_i) begin
             case (inject_state)
-                INJECTOR_IDLE:  graph_size <= src_data_i[16:0];
+                INJECTOR_IDLE:             graph_size <= src_data_i[16:0];
+                INJECTOR_RECEIVE_TASK_CNT: task_cnt   <= src_data_i[8:0];
                 default: ;
             endcase
         end
@@ -150,7 +142,7 @@ module TaskInjector
             INJECTOR_RECEIVE_TASK_CNT:
                 inject_next_state = src_rx_i 
                     ? INJECTOR_SEND_DESCRIPTOR 
-                    : INJECTOR_IDLE;
+                    : INJECTOR_RECEIVE_TASK_CNT;
             INJECTOR_SEND_DESCRIPTOR:
                 inject_next_state = (send_state == SEND_FINISHED) 
                     ? INJECTOR_MAP 
