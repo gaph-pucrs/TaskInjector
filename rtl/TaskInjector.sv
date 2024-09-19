@@ -113,10 +113,7 @@ module TaskInjector
         else if (src_rx_i) begin
             case (inject_state)
                 INJECTOR_IDLE:             graph_size <= src_data_i[16:0];
-                INJECTOR_RECEIVE_APP_HASH: begin
-                    $display("Hash %x", src_data_i);
-                    app_hash   <= src_data_i;
-                end
+                INJECTOR_RECEIVE_APP_HASH: app_hash   <= src_data_i;
                 INJECTOR_RECEIVE_TASK_CNT: task_cnt   <= src_data_i[8:0];
                 default: ;
             endcase
