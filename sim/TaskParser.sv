@@ -142,7 +142,7 @@ module TaskParser
 ////////////////////////////////////////////////////////////////////////////////
 
     string           app_name;
-    longint unsigned start_time;
+    real             start_time;
     int              app_descr_fd;
     int              mapping;
     int              app_graph;
@@ -198,7 +198,7 @@ module TaskParser
                     end
 
                     if (!INJECT_MAPPER) begin
-                        $fscanf(app_start_fd, "%d", start_time);
+                        $fscanf(app_start_fd, "%f", start_time);
                         $fscanf(app_descr_fd, "%x", app_name_hash);
                         $fscanf(app_descr_fd, "%d", app_task_cnt);
                         $fscanf(app_descr_fd, "%d", descr_size);
@@ -320,7 +320,7 @@ module TaskParser
 
 ////////////////////////////////////////////////////////////////////////////////
 
-    assign can_start = (($time() / 1_000_000 ) >= start_time);
+    assign can_start = ($time() >= (start_time * 1_000_000));
 
     logic [31:0] ttt;
     assign ttt   = INJECT_MAPPER  ? ma_ttt    : '1;
