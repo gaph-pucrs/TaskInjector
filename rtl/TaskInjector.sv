@@ -457,7 +457,7 @@ module TaskInjector
                     if (send_state == SEND_WAIT_REQUEST) begin
                         aux_header_size <= 2'd1;
                         aux_header      <= '0;
-                        aux_header[0]   <= EOA;
+                        aux_header[0]   <= REQUEST_FINISH;
                     end
                 end
                 default: aux_header_size <= '0;
