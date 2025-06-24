@@ -16,21 +16,19 @@
 
 package TaskInjectorPkg;
 
-    parameter HEADER_SIZE = 13;
-
     /* Services inside MESSAGE_DELIVERY */
-    parameter logic [31:0] NEW_APP                = 32'h00000000;
-    parameter logic [31:0] APP_ALLOCATION_REQUEST = 32'h00000001;
-    parameter logic [31:0] APP_MAPPING_COMPLETE   = 32'h00000002;
-    parameter logic [31:0] TASK_TERMINATED        = 32'h00000005;
-    parameter logic [31:0] REQUEST_FINISH         = 32'h0000000B;
+    parameter logic [7:0] NEW_APP                = 8'h00;
+    parameter logic [7:0] APP_ALLOCATION_REQUEST = 8'h01;
+    parameter logic [7:0] APP_MAPPING_COMPLETE   = 8'h02;
+    parameter logic [7:0] TASK_TERMINATED        = 8'h06;
+    parameter logic [7:0] REQUEST_FINISH         = 8'h10;
 
     /* "Raw" services */
-    parameter logic [31:0] DATA_AV                = 32'h00000040;
-    parameter logic [31:0] MESSAGE_REQUEST        = 32'h00000041;
-    parameter logic [31:0] TASK_ALLOCATION        = 32'h00000042;
-    parameter logic [31:0] MESSAGE_DELIVERY       = 32'h00000043;
-    parameter logic [31:0] MIGRATION_DATA_BSS     = 32'h00000045;
+    parameter logic [7:0] DATA_AV          = 8'h40;
+    parameter logic [7:0] MESSAGE_REQUEST  = 8'h41;
+    parameter logic [7:0] TASK_ALLOCATION  = 8'h42;
+    parameter logic [7:0] MESSAGE_DELIVERY = 8'h43;
+    parameter logic [7:0] MIGRATION_DATA   = 8'h51;
 
 endpackage
 
