@@ -43,9 +43,8 @@ module TaskInjector
     input  logic [(FLIT_SIZE - 1):0] noc_data_i
 );
 
-    localparam MAX_PAYLOAD_SIZE    = 255; /* 255 flits for 255 task allocations */
-    localparam MAX_OUT_HEADER_SIZE = 9; /* MESSAGE_DELIVERY + NEW_APP */
-    localparam MAX_IN_HEADER_SIZE  = 5; /* MESSAGE_DELIVERY */
+    localparam MAX_IN_SIZE  = 260; /* 255 flits for 255 task allocations + 5 for MESSAGE_DELIVERY */
+    localparam MAX_OUT_SIZE = 9; /* MESSAGE_DELIVERY + NEW_APP */
 
     typedef enum logic [13:0] {
         INJECTOR_IDLE             = 14'b00000000000001,
@@ -76,8 +75,8 @@ module TaskInjector
     send_fsm_t send_state;
 
     /* Signals below should have 1 bit more to hold 'size' and not just max value */
-    logic [($clog2(MAX_OUT_HEADER_SIZE+1)-1):0] out_header_idx;
-    logic [($clog2(MAX_OUT_HEADER_SIZE+1)-1):0] out_header_size;
+    logic [($clog2(MAX_OUT_SIZE+1)-1):0] out_header_idx;
+    logic [($clog2(MAX_OUT_SIZE+1)-1):0] out_header_size;
 
     typedef enum logic [8:0] {
         RECEIVE_IDLE         = 9'b000000001,
@@ -93,7 +92,7 @@ module TaskInjector
     receive_fsm_t receive_state;
 
     /* verilator lint_off UNUSEDSIGNAL */
-    logic [(MAX_PAYLOAD_SIZE + MAX_IN_HEADER_SIZE - 1):0][(FLIT_SIZE - 1):0] in_buffer;
+    logic [(MAX_IN_SIZE - 1):0][(FLIT_SIZE - 1):0] in_buffer;
     
 ////////////////////////////////////////////////////////////////////////////////
 // Injector
@@ -251,7 +250,7 @@ module TaskInjector
 
     logic [(FLIT_SIZE - 1):0] out_total_size;
 
-    logic [(MAX_OUT_HEADER_SIZE - 1):0][(FLIT_SIZE - 1):0] out_header;
+    logic [(MAX_OUT_SIZE - 1):0][(FLIT_SIZE - 1):0] out_header;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             out_header      <= '0;
@@ -431,8 +430,8 @@ module TaskInjector
 // Receive control
 ////////////////////////////////////////////////////////////////////////////////
 
-    logic [($clog2(MAX_IN_HEADER_SIZE)):0] in_buffer_idx;
-    logic [($clog2(MAX_IN_HEADER_SIZE)):0] in_buffer_size;
+    logic [($clog2(MAX_IN_SIZE)):0] in_buffer_idx;
+    logic [($clog2(MAX_IN_SIZE)):0] in_buffer_size;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             in_buffer_idx <= '0;
@@ -478,7 +477,7 @@ module TaskInjector
                 if (noc_rx_i) begin
                     if (noc_eop_i)
                         receive_next_state = RECEIVE_SERVICE;
-                    else if (32'(in_buffer_idx) == (MAX_IN_HEADER_SIZE + MAX_PAYLOAD_SIZE - 1))
+                    else if (32'(in_buffer_idx) == (MAX_IN_SIZE - 1))
                         receive_next_state = RECEIVE_DROP;
                     else
                         receive_next_state = RECEIVE_PACKET;
