@@ -101,16 +101,21 @@ module TaskInjector
     logic [16:0] graph_size;
     logic [31:0] app_hash;
     logic [ 8:0] task_cnt;
+    logic        app_secure;    /* Bit 31 of the task-count word, set by TaskParser */
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             graph_size <= '0;
             task_cnt   <= '0;
+            app_secure <= '0;
         end
         else if (src_rx_i) begin
             case (inject_state)
                 INJECTOR_IDLE:             graph_size <= src_data_i[16:0];
                 INJECTOR_RECEIVE_APP_HASH: app_hash   <= src_data_i;
-                INJECTOR_RECEIVE_TASK_CNT: task_cnt   <= src_data_i[8:0];
+                INJECTOR_RECEIVE_TASK_CNT: begin
+                    task_cnt   <= src_data_i[8:0];
+                    app_secure <= src_data_i[31];
+                end
                 default: ;
             endcase
         end
@@ -323,7 +328,7 @@ module TaskInjector
                                         out_header_size <= 8;
                                         out_total_size  <= (32'({task_cnt, 1'b0}) + 32'(graph_size) + 8);
                                         out_header[4]   <= {(30'({task_cnt, 1'b0}) + 30'(graph_size) + 30'h3), 2'b0};
-                                        out_header[5]   <= {8'(task_cnt), NEW_APP, 16'h0000};
+                                        out_header[5]   <= {8'(task_cnt), NEW_APP, 15'h0000, app_secure}; /* pad16 bit 0: secure */
                                         out_header[6]   <= INJECTOR_ADDRESS;
                                         out_header[7]   <= app_hash;
                                     end
