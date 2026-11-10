@@ -46,21 +46,22 @@ module TaskInjector
     localparam MAX_IN_SIZE  = 260; /* 255 flits for 255 task allocations + 5 for MESSAGE_DELIVERY */
     localparam MAX_OUT_SIZE = 9; /* MESSAGE_DELIVERY + NEW_APP */
 
-    typedef enum logic [13:0] {
-        INJECTOR_IDLE             = 14'b00000000000001,
-        INJECTOR_RECEIVE_APP_HASH = 14'b00000000000010,
-        INJECTOR_RECEIVE_TASK_CNT = 14'b00000000000100,
-        INJECTOR_SEND_DESCRIPTOR  = 14'b00000000001000,
-        INJECTOR_MAP              = 14'b00000000010000,
-        INJECTOR_RECEIVE_TXT_SZ   = 14'b00000000100000,
-        INJECTOR_RECEIVE_DATA_SZ  = 14'b00000001000000,
-        INJECTOR_RECEIVE_BSS_SZ   = 14'b00000010000000,
-        INJECTOR_RECEIVE_ENTRY    = 14'b00000100000000,
-        INJECTOR_SEND_TASK        = 14'b00001000000000,
-        INJECTOR_NEXT_TASK        = 14'b00010000000000,
-        INJECTOR_WAIT_COMPLETE    = 14'b00100000000000,
-        INJECTOR_SEND_EOA         = 14'b01000000000000,
-        INJECTOR_FINISHED         = 14'b10000000000000
+    typedef enum logic [14:0] {
+        INJECTOR_IDLE             = 15'b000000000000001,
+        INJECTOR_RECEIVE_APP_HASH = 15'b000000000000010,
+        INJECTOR_RECEIVE_TASK_CNT = 15'b000000000000100,
+        INJECTOR_SEND_DESCRIPTOR  = 15'b000000000001000,
+        INJECTOR_MAP              = 15'b000000000010000,
+        INJECTOR_RECEIVE_TXT_SZ   = 15'b000000000100000,
+        INJECTOR_RECEIVE_RO_SZ    = 15'b000000001000000,
+        INJECTOR_RECEIVE_DATA_SZ  = 15'b000000010000000,
+        INJECTOR_RECEIVE_BSS_SZ   = 15'b000000100000000,
+        INJECTOR_RECEIVE_ENTRY    = 15'b000001000000000,
+        INJECTOR_SEND_TASK        = 15'b000010000000000,
+        INJECTOR_NEXT_TASK        = 15'b000100000000000,
+        INJECTOR_WAIT_COMPLETE    = 15'b001000000000000,
+        INJECTOR_SEND_EOA         = 15'b010000000000000,
+        INJECTOR_FINISHED         = 15'b100000000000000
     } inject_fsm_t;
     inject_fsm_t inject_state;
 
@@ -158,8 +159,12 @@ module TaskInjector
                         : INJECTOR_RECEIVE_TXT_SZ;
             INJECTOR_RECEIVE_TXT_SZ:
                 inject_next_state = src_rx_i 
-                    ? INJECTOR_RECEIVE_DATA_SZ 
+                    ? INJECTOR_RECEIVE_RO_SZ 
                     : INJECTOR_RECEIVE_TXT_SZ;
+            INJECTOR_RECEIVE_RO_SZ:
+                inject_next_state = src_rx_i 
+                    ? INJECTOR_RECEIVE_DATA_SZ 
+                    : INJECTOR_RECEIVE_RO_SZ;
             INJECTOR_RECEIVE_DATA_SZ:
                 inject_next_state = src_rx_i 
                     ? INJECTOR_RECEIVE_BSS_SZ 
@@ -221,6 +226,7 @@ module TaskInjector
                     INJECTOR_IDLE,
                     INJECTOR_RECEIVE_APP_HASH, 
                     INJECTOR_RECEIVE_TXT_SZ, 
+                    INJECTOR_RECEIVE_RO_SZ, 
                     INJECTOR_RECEIVE_DATA_SZ, 
                     INJECTOR_RECEIVE_BSS_SZ, 
                     INJECTOR_RECEIVE_ENTRY,
@@ -269,35 +275,40 @@ module TaskInjector
             else begin
                 case (inject_state) /* Priority to send without protocol to allocate task */
                     INJECTOR_RECEIVE_TXT_SZ: begin
-                        out_header_size <= 7;
+                        out_header_size <= 8;
                         out_total_size  <= ((src_data_i + 32'h00000003) & 32'hFFFFFFFC); /* Round up to 4 bytes */
                         out_header      <= '0;
                         out_header[0]   <= (INJECT_MAPPER && task_cnt == '0) /* Target address         */
                             ? {8'h00, TASK_ALLOCATION, mapper_address_i}
                             : {8'h00, TASK_ALLOCATION, in_buffer[current_task + 6][15:0]};
                         out_header[2]   <= src_data_i;                       /* Text size              */
-                        out_header[5]   <= (INJECT_MAPPER && task_cnt == '0) /* Task ID + Mapper Addr. */
+                        out_header[6]   <= (INJECT_MAPPER && task_cnt == '0) /* Task ID + Mapper Addr. */
                             ? {16'h0000, 16'hFFFF}
                             : {in_buffer[5][31:24], current_task[7:0], mapper_address_i};
-                        out_header[6]   <= (INJECT_MAPPER && task_cnt == '0) /* Mapper ID              */
+                        out_header[7]   <= (INJECT_MAPPER && task_cnt == '0) /* Mapper ID              */
                             ? {16'h0000, 8'h00, 8'hFF}
                             : {16'h0000, 8'h00, 8'h00};
                     end
+                    INJECTOR_RECEIVE_RO_SZ: begin
+                        out_header[3] <= src_data_i; /* Read-only data size */
+                        if (src_rx_i)
+                            out_total_size <= out_total_size + ((src_data_i + 32'h00000003) & 32'hFFFFFFFC);
+                    end
                     INJECTOR_RECEIVE_DATA_SZ: begin
-                        out_header[3] <= src_data_i; /* Data size */
+                        out_header[4] <= src_data_i; /* Data size */
                         if (src_rx_i)
                             out_total_size <= out_total_size + ((src_data_i + 32'h00000003) & 32'hFFFFFFFC);
                     end
                     INJECTOR_RECEIVE_BSS_SZ: begin
-                        out_header[4] <= src_data_i; /* BSS size    */
+                        out_header[5] <= src_data_i; /* BSS size    */
                         if (src_rx_i)
                             out_total_size <= {2'b0, out_total_size[(FLIT_SIZE - 1):2]};
                     end
                     INJECTOR_RECEIVE_ENTRY: begin
                         out_header[1] <= src_data_i; /* Entry point */
                         if (src_rx_i)
-                            out_total_size <= out_total_size + 7;
-                        // $display("TOTAL SIZE OF MESSAGE = %0d", out_total_size + 7);
+                            out_total_size <= out_total_size + 8;
+                        // $display("TOTAL SIZE OF MESSAGE = %0d", out_total_size + 8);
                     end
                     INJECTOR_SEND_DESCRIPTOR,
                     INJECTOR_SEND_EOA:          begin  /* Messages following the MPI protocol */

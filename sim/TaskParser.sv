@@ -61,6 +61,7 @@ module TaskParser
         INJECT_GRAPH,
         LOAD_TASK,
         INJECT_TEXT,
+        INJECT_RODATA,
         INJECT_DATA,
         INJECT_BSS,
         INJECT_ENTRY,
@@ -108,7 +109,9 @@ module TaskParser
             LOAD_TASK:
                 next_state = INJECT_TEXT;
             INJECT_TEXT:
-                next_state = credit_i ? INJECT_DATA   : INJECT_TEXT;
+                next_state = credit_i ? INJECT_RODATA : INJECT_TEXT;
+            INJECT_RODATA:
+                next_state = credit_i ? INJECT_DATA   : INJECT_RODATA;
             INJECT_DATA:
                 next_state = credit_i ? INJECT_BSS    : INJECT_DATA;
             INJECT_BSS:
@@ -148,6 +151,7 @@ module TaskParser
     int              app_graph;
     int              task_descr_fd;
     int unsigned     text_size;
+    int unsigned     rodata_size;
     int unsigned     data_size;
     int unsigned     bss_size;
     int unsigned     entry_point;
@@ -168,6 +172,7 @@ module TaskParser
             task_name        = "";
             task_descr_fd    = '0;
             text_size        = '0;
+            rodata_size      = '0;
             data_size        = '0;
             bss_size         = '0;
             entry_point      = '0;
@@ -290,11 +295,12 @@ module TaskParser
                     end
 
                     $fscanf(task_descr_fd, "%x",   text_size);
+                    $fscanf(task_descr_fd, "%x", rodata_size);
                     $fscanf(task_descr_fd, "%x",   data_size);
                     $fscanf(task_descr_fd, "%x",    bss_size);
                     $fscanf(task_descr_fd, "%x", entry_point);
                     $fscanf(task_descr_fd, "%x",      binary);
-                    binary_size <= ((text_size + data_size) / 4) - 1; /* Convert to 32-bit */
+                    binary_size <= ((text_size + rodata_size + data_size) / 4) - 1; /* Convert to 32-bit */
                     $display("[%7.3f] [TaskParser] Injecting task %s", $time()/1_000_000.0, task_name);
                 end
                 INJECT_BINARY: begin
@@ -337,6 +343,7 @@ module TaskParser
             INJECT_TTT:           data_o = ttt;
             INJECT_GRAPH:         data_o = graph;
             INJECT_TEXT:          data_o = text_size;
+            INJECT_RODATA:        data_o = rodata_size;
             INJECT_DATA:          data_o = data_size;
             INJECT_BSS:           data_o = bss_size;
             INJECT_ENTRY:         data_o = entry_point;
@@ -358,6 +365,7 @@ module TaskParser
         INJECT_TTT,
         INJECT_GRAPH,
         INJECT_TEXT,
+        INJECT_RODATA,
         INJECT_DATA,
         INJECT_BSS,
         INJECT_ENTRY,
