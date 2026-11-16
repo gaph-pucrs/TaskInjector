@@ -28,7 +28,10 @@ package TaskInjectorPkg;
     parameter logic [7:0] MESSAGE_REQUEST  = 8'h41;
     parameter logic [7:0] TASK_ALLOCATION  = 8'h42;
     parameter logic [7:0] MESSAGE_DELIVERY = 8'h43;
+    /* Only the traffic monitor reads it */
+    /* verilator lint_off UNUSEDPARAM */
     parameter logic [7:0] MIGRATION_DATA   = 8'h51;
+    /* verilator lint_on UNUSEDPARAM */
 
 endpackage
 
