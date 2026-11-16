@@ -20,7 +20,10 @@ package TaskInjectorPkg;
     parameter logic [7:0] NEW_APP                = 8'h00;
     parameter logic [7:0] APP_ALLOCATION_REQUEST = 8'h01;
     parameter logic [7:0] APP_MAPPING_COMPLETE   = 8'h02;
+    /* Only the debug monitors read it */
+    /* verilator lint_off UNUSEDPARAM */
     parameter logic [7:0] TASK_TERMINATED        = 8'h06;
+    /* verilator lint_on UNUSEDPARAM */
     parameter logic [7:0] REQUEST_FINISH         = 8'h10;
 
     /* "Raw" services */
