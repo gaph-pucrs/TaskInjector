@@ -143,6 +143,7 @@ module TaskParser
 
     string           app_name;
     real             start_time;
+    int unsigned     app_secure;    /* Per-instance secure flag, from app_start.txt */
     int              app_descr_fd;
     int              mapping;
     int              app_graph;
@@ -159,6 +160,7 @@ module TaskParser
             /* verilator lint_off BLKSEQ */
             app_name         = "management";
             start_time       = '0;
+            app_secure       = '0;
             descr_size       = '0;
             app_name_hash    = '0;
             app_task_cnt     = '0;
@@ -199,6 +201,10 @@ module TaskParser
 
                     if (!INJECT_MAPPER) begin
                         $fscanf(app_start_fd, "%f", start_time);
+                        if ($fscanf(app_start_fd, "%d", app_secure) != 1 || app_secure > 1) begin
+                            $display("[%7.3f] [TaskParser] App %s: expected secure flag 0 or 1 after start time", $time()/1_000_000.0, app_name);
+                            $finish();
+                        end
                         $fscanf(app_descr_fd, "%x", app_name_hash);
                         $fscanf(app_descr_fd, "%d", app_task_cnt);
                         $fscanf(app_descr_fd, "%d", descr_size);
@@ -332,7 +338,7 @@ module TaskParser
         case (state)
             INJECT_DESCR_SIZE:    data_o = descr_size;
             INJECT_APP_NAME_HASH: data_o = app_name_hash;
-            INJECT_TASK_CNT:      data_o = map_ttt_size;
+            INJECT_TASK_CNT:      data_o = {(app_secure != '0), 31'(map_ttt_size)};   /* bit 31: secure flag */
             INJECT_MAP:           data_o = mapping;
             INJECT_TTT:           data_o = ttt;
             INJECT_GRAPH:         data_o = graph;

@@ -18,7 +18,8 @@ module TaskInjector
 #(
     parameter logic [31:0] INJECTOR_ADDRESS = 32'hE0000000,
     parameter              FLIT_SIZE        = 32,
-    parameter              INJECT_MAPPER    = 0
+    parameter              INJECT_MAPPER    = 0,
+    parameter logic [15:0] OSZ_WINDOW       = 16'h0000  /* OSZ region size 0xXXYY at PE 0,0; 0 = none */
 )
 (
     input  logic                     clk_i,
@@ -93,7 +94,23 @@ module TaskInjector
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic [(MAX_IN_SIZE - 1):0][(FLIT_SIZE - 1):0] in_buffer;
-    
+
+    /**
+     * OSZ region: a secure application is entered only through the east port
+     * of its top row, so a task packet for a PE inside the region starts with a
+     * source-routing flit (bit 27) to the turn point (X, top row), in the free
+     * column. The top row is the largest y among the application's task PEs in
+     * the region (every row an application claims holds at least one task).
+     */
+    localparam logic [7:0] OSZ_X = OSZ_WINDOW[15:8];
+    localparam logic [7:0] OSZ_Y = OSZ_WINDOW[7:0];
+
+    logic [7:0] rx_osz_hi;      /* Running top row while a packet arrives */
+    logic       rx_osz_valid;
+    logic [7:0] app_osz_hi;     /* Top row of the application being injected */
+    logic       app_osz_valid;
+    logic       hdr_off;        /* 1 when the current task packet starts with the SR flit */
+
 ////////////////////////////////////////////////////////////////////////////////
 // Injector
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,16 +118,21 @@ module TaskInjector
     logic [16:0] graph_size;
     logic [31:0] app_hash;
     logic [ 8:0] task_cnt;
+    logic        app_secure;    /* Bit 31 of the task-count word, set by TaskParser */
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             graph_size <= '0;
             task_cnt   <= '0;
+            app_secure <= '0;
         end
         else if (src_rx_i) begin
             case (inject_state)
                 INJECTOR_IDLE:             graph_size <= src_data_i[16:0];
                 INJECTOR_RECEIVE_APP_HASH: app_hash   <= src_data_i;
-                INJECTOR_RECEIVE_TASK_CNT: task_cnt   <= src_data_i[8:0];
+                INJECTOR_RECEIVE_TASK_CNT: begin
+                    task_cnt   <= src_data_i[8:0];
+                    app_secure <= src_data_i[31];
+                end
                 default: ;
             endcase
         end
@@ -250,11 +272,26 @@ module TaskInjector
 
     logic [(FLIT_SIZE - 1):0] out_total_size;
 
+    logic [15:0] task_target;
+    assign task_target = (INJECT_MAPPER && task_cnt == '0)
+        ? mapper_address_i
+        : in_buffer[current_task + 6][15:0];
+
+    /* Constant false without a region (OSZ_WINDOW = 0), which is intended */
+    /* verilator lint_off UNSIGNED */
+    logic task_sr;
+    assign task_sr = (task_target[15:8] < OSZ_X) && (task_target[7:0] < OSZ_Y);
+    /* verilator lint_on UNSIGNED */
+
+    logic [15:0] task_turn;
+    assign task_turn = {OSZ_X, app_osz_valid ? app_osz_hi : task_target[7:0]};
+
     logic [(MAX_OUT_SIZE - 1):0][(FLIT_SIZE - 1):0] out_header;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
             out_header      <= '0;
             out_header_size <= '0;
+            hdr_off         <= 1'b0;
         end
         else begin
             if (receive_state == RECEIVE_WAIT_REQ) begin
@@ -269,34 +306,36 @@ module TaskInjector
             else begin
                 case (inject_state) /* Priority to send without protocol to allocate task */
                     INJECTOR_RECEIVE_TXT_SZ: begin
-                        out_header_size <= 7;
+                        /* With the SR flit the 7 header flits move one position up */
+                        out_header_size <= task_sr ? 8 : 7;
                         out_total_size  <= ((src_data_i + 32'h00000003) & 32'hFFFFFFFC); /* Round up to 4 bytes */
                         out_header      <= '0;
-                        out_header[0]   <= (INJECT_MAPPER && task_cnt == '0) /* Target address         */
-                            ? {8'h00, TASK_ALLOCATION, mapper_address_i}
-                            : {8'h00, TASK_ALLOCATION, in_buffer[current_task + 6][15:0]};
-                        out_header[2]   <= src_data_i;                       /* Text size              */
-                        out_header[5]   <= (INJECT_MAPPER && task_cnt == '0) /* Task ID + Mapper Addr. */
+                        hdr_off         <= task_sr;
+                        if (task_sr)
+                            out_header[0] <= {4'b0000, 1'b1, 11'b0, task_turn};      /* SR flit: turn point  */
+                        out_header[0 + 32'(task_sr)] <= {8'h00, TASK_ALLOCATION, task_target}; /* Target address */
+                        out_header[2 + 32'(task_sr)] <= src_data_i;                 /* Text size              */
+                        out_header[5 + 32'(task_sr)] <= (INJECT_MAPPER && task_cnt == '0) /* Task ID + Mapper Addr. */
                             ? {16'h0000, 16'hFFFF}
                             : {in_buffer[5][31:24], current_task[7:0], mapper_address_i};
-                        out_header[6]   <= (INJECT_MAPPER && task_cnt == '0) /* Mapper ID              */
+                        out_header[6 + 32'(task_sr)] <= (INJECT_MAPPER && task_cnt == '0) /* Mapper ID       */
                             ? {16'h0000, 8'h00, 8'hFF}
                             : {16'h0000, 8'h00, 8'h00};
                     end
                     INJECTOR_RECEIVE_DATA_SZ: begin
-                        out_header[3] <= src_data_i; /* Data size */
+                        out_header[3 + 32'(hdr_off)] <= src_data_i; /* Data size */
                         if (src_rx_i)
                             out_total_size <= out_total_size + ((src_data_i + 32'h00000003) & 32'hFFFFFFFC);
                     end
                     INJECTOR_RECEIVE_BSS_SZ: begin
-                        out_header[4] <= src_data_i; /* BSS size    */
+                        out_header[4 + 32'(hdr_off)] <= src_data_i; /* BSS size    */
                         if (src_rx_i)
                             out_total_size <= {2'b0, out_total_size[(FLIT_SIZE - 1):2]};
                     end
                     INJECTOR_RECEIVE_ENTRY: begin
-                        out_header[1] <= src_data_i; /* Entry point */
+                        out_header[1 + 32'(hdr_off)] <= src_data_i; /* Entry point */
                         if (src_rx_i)
-                            out_total_size <= out_total_size + 7;
+                            out_total_size <= out_total_size + 7 + 32'(hdr_off);
                         // $display("TOTAL SIZE OF MESSAGE = %0d", out_total_size + 7);
                     end
                     INJECTOR_SEND_DESCRIPTOR,
@@ -323,7 +362,7 @@ module TaskInjector
                                         out_header_size <= 8;
                                         out_total_size  <= (32'({task_cnt, 1'b0}) + 32'(graph_size) + 8);
                                         out_header[4]   <= {(30'({task_cnt, 1'b0}) + 30'(graph_size) + 30'h3), 2'b0};
-                                        out_header[5]   <= {8'(task_cnt), NEW_APP, 16'h0000};
+                                        out_header[5]   <= {8'(task_cnt), NEW_APP, 15'h0000, app_secure}; /* pad16 bit 0: secure */
                                         out_header[6]   <= INJECTOR_ADDRESS;
                                         out_header[7]   <= app_hash;
                                     end
@@ -453,6 +492,43 @@ module TaskInjector
                 in_buffer[in_buffer_idx] <= noc_data_i;
                 // $display("TaskInjector: Received flit %0d: %h, EOP: %b", in_buffer_idx, noc_data_i, noc_eop_i);
             end
+        end
+    end
+
+    /* OSZ: top row of the region PEs listed in the packet (task locations from flit 6) */
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni) begin
+            rx_osz_hi    <= '0;
+            rx_osz_valid <= 1'b0;
+        end
+        else begin
+            if (receive_state == RECEIVE_IDLE) begin
+                rx_osz_valid <= 1'b0;
+            end
+            /* Constant false without a region (OSZ_WINDOW = 0), which is intended */
+            /* verilator lint_off UNSIGNED */
+            else if (
+                receive_state == RECEIVE_PACKET && noc_rx_i && noc_credit_o
+                && 32'(in_buffer_idx) >= 6
+                && noc_data_i[15:8] < OSZ_X && noc_data_i[7:0] < OSZ_Y
+                && (!rx_osz_valid || noc_data_i[7:0] > rx_osz_hi)
+            ) begin
+            /* verilator lint_on UNSIGNED */
+                rx_osz_hi    <= noc_data_i[7:0];
+                rx_osz_valid <= 1'b1;
+            end
+        end
+    end
+
+    /* OSZ: keep the top row of the allocation being injected */
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni) begin
+            app_osz_hi    <= '0;
+            app_osz_valid <= 1'b0;
+        end
+        else if (receive_state == RECEIVE_DELIVERY && in_buffer[5][23:16] == APP_ALLOCATION_REQUEST) begin
+            app_osz_hi    <= rx_osz_hi;
+            app_osz_valid <= rx_osz_valid;
         end
     end
 
